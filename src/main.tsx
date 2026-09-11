@@ -20,8 +20,15 @@ void hydratePlugins().catch(() => {});
 const root = document.getElementById('root');
 if (!root) throw new Error('no #root');
 const isTranscriptWindow = new URLSearchParams(window.location.search).has('transcript-window');
-createRoot(root).render(
-  <StrictMode>
-    {isTranscriptWindow ? <TranscriptWindowRoot /> : <App />}
-  </StrictMode>,
-);
+// 幂等挂载守卫：外壳一旦带上查询串（历史 bug：editor.js?v=<mtime>），壳页加载的
+// 入口与懒加载分片里的 `import "./editor.js"` 会成为两个模块 URL，入口被求值两次、
+// 第二个 createRoot 把已挂载的编辑器整个抹掉。守卫让第二次求值直接放弃。
+const mountFlagWindow = window as typeof window & { __XMT_EDITOR_MOUNTED__?: boolean };
+if (!mountFlagWindow.__XMT_EDITOR_MOUNTED__) {
+  mountFlagWindow.__XMT_EDITOR_MOUNTED__ = true;
+  createRoot(root).render(
+    <StrictMode>
+      {isTranscriptWindow ? <TranscriptWindowRoot /> : <App />}
+    </StrictMode>,
+  );
+}

@@ -52,7 +52,7 @@ export function Timeline(props: TimelineProps) {
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
     applyLibraryToClip, applyLibraryToTrack, seekTo,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
-    markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds,
+    markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   } = useTimelineController(props);
 
   return (
@@ -439,8 +439,8 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
               playerRef.current?.seekTo(frame);
               onReviewItem?.({ itemId: target.id, frame, clientX, clientY });
             }}
-            onAddToChat={(items) => addSelectionToChat({ items, captions: [] })}
-            onRelinkFile={beginRelink} />
+            onRelinkFile={beginRelink}
+            clipClipboard={clipClipboard} />
         );
       })()}
 

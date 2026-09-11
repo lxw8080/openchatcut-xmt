@@ -3,6 +3,7 @@
 // Actions and presets/names/busy states are all here. The name is input inline, without window.prompt (Electron does not support it).
 // Exception for the error line: it is also written by the "Turn on captions" button outside the menu (there is no text script for this track), so it is passed in by Timeline.
 import { useEffect, useState } from 'react';
+import { injectXmtSubtitleFonts } from './customFonts';
 import { CAPTION_STYLES } from './styles';
 import { buildTranslation } from './translate';
 import type { CaptionsData, CaptionTemplate } from './types';
@@ -30,6 +31,7 @@ interface CaptionStyleMenuProps {
 }
 
 export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError, onClose, onBack, initialTranslateOpen = false }: CaptionStyleMenuProps) {
+  injectXmtSubtitleFonts();
   const t = useT();
   const [presets, setPresets] = useState<CaptionPreset[]>([]);
   const [nameDraft, setNameDraft] = useState<string | null>(null);

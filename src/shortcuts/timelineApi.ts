@@ -48,3 +48,13 @@ export interface TimelineShortcutApi {
 export type ItemClipboard =
   | { kind: 'item'; item: TimelineItem; /** multi-copy payload (optional) */ multi?: TimelineItem[] }
   | null;
+
+/** Clip-level clipboard ops shared by the ⌘C/⌘X/⌘V dispatcher and the clip context
+ * menu. Item-only semantics — unlike the keyboard paste, no caption-clipboard takeover. */
+export interface ClipClipboardOps {
+  copy: () => void;
+  cut: () => void;
+  paste: () => void;
+  /** read at menu-open time to enable/disable the paste entry */
+  hasItems: () => boolean;
+}

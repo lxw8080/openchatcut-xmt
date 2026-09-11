@@ -14,7 +14,7 @@ import type { AtomicAction } from '../../editor/store';
 import { sourceWindowForTimelineRange } from '../../editor/sourceLimit';
 import { hasOperationalTranscript } from '../../transcript/types';
 import type { FxClip } from './ClipContextMenu';
-import type { TimelineShortcutApi, ItemClipboard } from '../../shortcuts/timelineApi';
+import type { TimelineShortcutApi, ItemClipboard, ClipClipboardOps } from '../../shortcuts/timelineApi';
 import type { EditMode } from './timelineUtil';
 
 interface ShortcutDeps {
@@ -38,7 +38,7 @@ interface ShortcutDeps {
   pasteCaptionClipboard: () => boolean;
 }
 
-export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | null; zoneOut: number | null } {
+export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | null; zoneOut: number | null; clipClipboard: ClipClipboardOps } {
   const {
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
@@ -51,6 +51,82 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
   const itemClipRef = useRef<ItemClipboard>(null);
   const shuttleRateRef = useRef(0); // -4..+4 steps
   const shuttleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clip-level clipboard, item-only. The keyboard dispatcher routes through these
+  // after the caption-clipboard branch; the clip context menu calls them directly
+  // (a paste invoked from a clip must not materialize as a caption track).
+  const snapClip = (it: TimelineItem): TimelineItem => ({
+    ...it,
+    props: it.props ? { ...it.props } : it.props,
+    effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+  });
+  const copySelectedItems = () => {
+    const ids = selectedIdsOf(state);
+    const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
+    if (!items.length) return;
+    // store primary (last) for single paste; multi-paste pastes all relative to earliest
+    itemClipRef.current = {
+      kind: 'item',
+      item: snapClip(items[items.length - 1]!),
+      multi: items.length > 1 ? items.map(snapClip) : undefined,
+    };
+  };
+  const cutSelectedItems = () => {
+    const ids = selectedIdsOf(state);
+    const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
+    if (!items.length) return;
+    itemClipRef.current = {
+      kind: 'item',
+      item: snapClip(items[items.length - 1]!),
+      multi: items.length > 1 ? items.map(snapClip) : undefined,
+    };
+    // remove all in one history step
+    const idSet = new Set(ids);
+    commands.applyState({
+      ...state,
+      items: state.items.filter((it) => !idSet.has(it.id)),
+      transitions: (state.transitions ?? []).filter((t) => !idSet.has(t.incomingItemId) && !idSet.has(t.outgoingItemId)),
+      selectedId: null,
+      selectedIds: [],
+    });
+  };
+  const pasteItemsFromClipboard = () => {
+    const clip = itemClipRef.current;
+    if (!clip || clip.kind !== 'item') return;
+    const batch = clip.multi?.length ? clip.multi : [clip.item];
+    const baseStart = Math.min(...batch.map((it) => it.startFrame));
+    const ph = Math.max(0, playheadRef.current);
+    // Paste as 'add' actions, not a raw setFullState: the overlap guard silently
+    // rejects a full-state commit whose items overlap existing clips, so pasting
+    // at a playhead resting on a clip used to do nothing. 'add' clamps each item
+    // into the nearest track gap instead and lands in undo history as one step.
+    const newIds: string[] = [];
+    const actions: AtomicAction[] = batch.map((src) => {
+      const { startFrame: _dropped, ...rest } = src;
+      const id = `item_${crypto.randomUUID()}`;
+      newIds.push(id);
+      return {
+        type: 'add' as const,
+        item: {
+          ...rest,
+          id,
+          props: src.props ? { ...src.props } : src.props,
+          effects: src.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
+        },
+        startFrame: ph + (src.startFrame - baseStart),
+      };
+    });
+    commands.batch([
+      ...actions,
+      { type: 'selectMany' as const, ids: newIds },
+    ], '粘贴片段');
+  };
+  const clipClipboard: ClipClipboardOps = {
+    copy: copySelectedItems,
+    cut: cutSelectedItems,
+    paste: pasteItemsFromClipboard,
+    hasItems: () => itemClipRef.current?.kind === 'item',
+  };
 
   const stopShuttle = () => {
     shuttleRateRef.current = 0;
@@ -260,69 +336,14 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
       },
       copySelected: () => {
         if (copySelectedCaptions()) return;
-        const ids = selectedIdsOf(state);
-        const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
-        if (!items.length) return;
-        // store primary (last) for single paste; multi-paste pastes all relative to earliest
-        const snap = (it: TimelineItem): TimelineItem => ({
-          ...it,
-          props: it.props ? { ...it.props } : it.props,
-          effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
-        });
-        itemClipRef.current = {
-          kind: 'item',
-          item: snap(items[items.length - 1]!),
-          multi: items.length > 1 ? items.map(snap) : undefined,
-        };
+        copySelectedItems();
       },
       cutSelected: () => {
-        const ids = selectedIdsOf(state);
-        const items = ids.map((id) => state.items.find((x) => x.id === id)).filter(Boolean) as TimelineItem[];
-        if (!items.length) return;
-        const snap = (it: TimelineItem): TimelineItem => ({
-          ...it,
-          props: it.props ? { ...it.props } : it.props,
-          effects: it.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
-        });
-        itemClipRef.current = {
-          kind: 'item',
-          item: snap(items[items.length - 1]!),
-          multi: items.length > 1 ? items.map(snap) : undefined,
-        };
-        // remove all in one history step
-        const idSet = new Set(ids);
-        commands.applyState({
-          ...state,
-          items: state.items.filter((it) => !idSet.has(it.id)),
-          transitions: (state.transitions ?? []).filter((t) => !idSet.has(t.incomingItemId) && !idSet.has(t.outgoingItemId)),
-          selectedId: null,
-          selectedIds: [],
-        });
+        cutSelectedItems();
       },
       pasteClipboard: () => {
         if (pasteCaptionClipboard()) return;
-        const clip = itemClipRef.current;
-        if (!clip || clip.kind !== 'item') return;
-        const batch = clip.multi?.length ? clip.multi : [clip.item];
-        const baseStart = Math.min(...batch.map((it) => it.startFrame));
-        const ph = Math.max(0, playheadRef.current);
-        const newItems: TimelineItem[] = batch.map((src) => {
-          const newId = `item_${crypto.randomUUID()}`;
-          return {
-            ...src,
-            id: newId,
-            startFrame: ph + (src.startFrame - baseStart),
-            props: src.props ? { ...src.props } : src.props,
-            effects: src.effects?.map((e) => ({ ...e, overrides: e.overrides ? { ...e.overrides } : undefined })),
-          };
-        });
-        const newIds = newItems.map((it) => it.id);
-        commands.applyState({
-          ...state,
-          items: [...state.items, ...newItems],
-          selectedIds: newIds,
-          selectedId: newIds[newIds.length - 1] ?? null,
-        });
+        pasteItemsFromClipboard();
       },
       pasteEffects: () => {
         const it = state.items.find((x) => x.id === state.selectedId);
@@ -408,5 +429,5 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keep API fresh each render
   });
 
-  return { zoneIn, zoneOut };
+  return { zoneIn, zoneOut, clipClipboard };
 }

@@ -424,7 +424,7 @@ export function useTimelineController({
   const [editMarker, setEditMarker] = useState<string | null>(null);
   const markers = state.markers ?? [];
   // Shortcut API assembly + I/O interval/JKL shuttle/fragment clipboard (the whole machine is in useTimelineShortcuts)
-  const { zoneIn, zoneOut } = useTimelineShortcuts({
+  const { zoneIn, zoneOut, clipClipboard } = useTimelineShortcuts({
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
     bladeSelected, setEditMarker, fxClip, setFxClip,
@@ -464,6 +464,6 @@ export function useTimelineController({
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
     applyLibraryToClip, applyLibraryToTrack, seekTo,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
-    markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds,
+    markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   };
 }

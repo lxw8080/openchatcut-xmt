@@ -36,7 +36,9 @@ function readInitial(): QualityMode {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === 'master' || raw === 'balanced') return raw;
   } catch { /* private mode */ }
-  return 'balanced';
+  // xmt fork：默认 master（码率目标 ×1.5）—— 交付物就是浏览器导出本身，
+  // 预设档位宁高勿低；用户显式选过 balanced 之后走 localStorage。
+  return 'master';
 }
 
 function readPreviewSourceInitial(): PreviewSourceMode {

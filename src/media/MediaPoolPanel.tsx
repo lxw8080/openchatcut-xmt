@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useMusicAnalysisCards } from '../audio/intelligence/useMusicAnalysisCards';
 import { useT } from '../i18n/locale';
+import { theme } from '../theme';
 import type { MediaAsset, MediaAssetRelinkPatch, MediaFolder } from '../editor/types';
 import { usePersistedState } from '../hooks/usePersistedState';
 import { useFocusReturn } from '../hooks/useFocusReturn';
@@ -27,6 +28,7 @@ import { useTranscriptViewer } from './useTranscriptViewer';
 import { toggleMediaView } from './mediaView';
 import { resolveMediaPoolShortcut } from './mediaPoolShortcutScope';
 import { useMediaPoolFileImport } from './useMediaPoolFileImport';
+import { LibraryImportDialog } from '../xmt/LibraryImportDialog';
 import type { UseDirectoryImportState } from './useDirectoryImport';
 interface MediaPoolPanelProps {
   semanticScopeId: string;
@@ -67,6 +69,8 @@ interface MediaPoolPanelProps {
   onRelinkAsset?: (id: string, next: MediaAssetRelinkPatch) => void;
   /** Add a solid-color clip. */
   onAddSolid?: () => void;
+  /** xmt「项目素材库」：登记库素材为媒体池资产（不拷贝、不落时间线）。 */
+  onRegisterPoolAsset?: (asset: MediaAsset) => void;
   /** Start (or retry) ASR for one asset from the pool UI. */
   onTranscribe: (asset: MediaAsset) => void;
 }
@@ -74,7 +78,7 @@ interface MediaPoolPanelProps {
 export function MediaPoolPanel({
   semanticScopeId, assets, folders, fps, usedAssetIds, offlineAssetIds, onAssetLoadError,
   onImport, onImportMobile, directoryImport, directoryImportError, onAddAsset, onAddAssetsToTimeline, onAddAssetsToChat, onCreateFolder, onRenameFolder,
-  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid, onTranscribe,
+  onDeleteFolder, onMoveAssets, onRenameAsset, onRenameAssets, onSetFavorite, onSetAssetsFavorite, onRemoveAsset, onRemoveAssets, onPasteAssets, onRelinkAsset, onAddSolid, onRegisterPoolAsset, onTranscribe,
 }: MediaPoolPanelProps) {
   const t = useT();
   const musicAnalysis = useMusicAnalysisCards(assets);
@@ -112,6 +116,8 @@ export function MediaPoolPanel({
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[] | null>(null);
   const [semanticOpenRequest, setSemanticOpenRequest] = useState(0);
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false);
+  // xmt「从项目素材库导入」对话框（宿主 projectLibraryUrl 分页检索）
+  const [libraryImportOpen, setLibraryImportOpen] = useState(false);
   const { transcriptEntries, viewerAsset, openTranscriptViewer, closeTranscriptViewer, stepViewer } = useTranscriptViewer(assets);
   const relink = useMediaPoolRelink({
     assets,
@@ -351,6 +357,15 @@ export function MediaPoolPanel({
     >
       <input ref={inputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" multiple hidden onChange={(event) => void pickFiles(event.target.files, currentFolderId)} />
       <input ref={relinkInputRef} type="file" accept="video/*,image/*,audio/*,.gif,.svg,image/gif,image/svg+xml" hidden onChange={(event) => void pickRelinkFile(event.target.files)} />
+      {onRegisterPoolAsset && (
+        <div style={{ padding: '6px 12px 0' }}>
+          <button type="button" onClick={() => { modalFocus.remember(() => undefined); setLibraryImportOpen(true); }} style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            border: `0.5px solid ${theme.border}`, background: 'none', color: theme.text,
+            borderRadius: 4, padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+          }}>{t('从项目素材库导入')}</button>
+        </div>
+      )}
       <MediaPoolToolbar
         scopeId={semanticScopeId}
         assets={assets}
@@ -493,6 +508,13 @@ export function MediaPoolPanel({
         onRelink={startRelink}
       />
       {mobileUploadOpen && <MobileUploadDialog onClose={() => { setMobileUploadOpen(false); modalFocus.restore(); }} onImport={onImportMobile} />}
+      {libraryImportOpen && onRegisterPoolAsset && (
+        <LibraryImportDialog
+          fps={fps}
+          onAddAsset={onRegisterPoolAsset}
+          onClose={() => { setLibraryImportOpen(false); modalFocus.restore(); }}
+        />
+      )}
     </div>
   );
 }

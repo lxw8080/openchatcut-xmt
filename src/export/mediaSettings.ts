@@ -1,4 +1,7 @@
-export const EXPORT_RESOLUTIONS = { '480p': 480, '720p': 720, '1080p': 1080, '4k': 2160 } as const;
+// xmt fork 增加 1440p：预设是绝对短边目标，1080 与 2160 之间的一切都会被
+// exportResolutionForCanvas 下捕到 1080p —— canvas_size 放大到 2560×1440 的
+// 画布在导出时会被静默缩回 1920×1080，导出正好撤销了画布存在的意义。
+export const EXPORT_RESOLUTIONS = { '480p': 480, '720p': 720, '1080p': 1080, '1440p': 1440, '4k': 2160 } as const;
 export type ExportResolution = keyof typeof EXPORT_RESOLUTIONS;
 
 export const EXPORT_FPS_OPTIONS = [24, 25, 30, 50, 60] as const;

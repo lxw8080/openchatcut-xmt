@@ -172,7 +172,11 @@ export default {
   '音量 {pct}% @ {sec}s — 拖动改帧/值 · 右键删除': 'Volume {pct}% @ {sec}s — drag to change frame/value · right-click to delete',
   // ── ClipContextMenu.tsx ──
   'AI 多机位同步': 'AI multicam sync',
-  '复制': 'Duplicate',
+  '复制': 'Copy',
+  '复制（{n}）': 'Copy ({n})',
+  '剪切': 'Cut',
+  '剪切（{n}）': 'Cut ({n})',
+  '粘贴': 'Paste',
   '切分': 'Split',
   '已应用效果': 'Applied effects',
   '已应用效果（{n}）': 'Applied effects ({n})',

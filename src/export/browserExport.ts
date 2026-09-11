@@ -6,6 +6,26 @@ import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
+/** xmt 导出加速运行时的最小接口（宿主 editor-export-acceleration.js 提供）。 */
+interface ExportAccelerationRuntime {
+  selectEncoder?: (input: { codec: string; width: number; height: number; bitrate?: number | 'high'; fps: number; signal?: AbortSignal }) =>
+    Promise<{ hardwareAcceleration: 'prefer-hardware' | 'prefer-software'; reason?: string }>;
+  beginAttempt?: (input: { codec: string; width: number; height: number; fps: number; bitrate?: number | 'high'; hardwareAcceleration: string; outputTarget: string }) => unknown;
+  noteProgress?: (token: unknown, progress: RenderMediaOnWebProgress) => void;
+  finishAttempt?: (token: unknown, result: unknown, blob: Blob) => void;
+  failAttempt?: (token: unknown, error: unknown) => void;
+  prepareProject?: (input: { project?: ProjectDoc; signal?: AbortSignal; openSource?: unknown }) => Promise<void>;
+  recoverDecoder?: (input: { error: unknown; signal?: AbortSignal; openSource?: unknown }) => Promise<boolean | undefined>;
+  shouldFallbackEncoder?: (error: unknown) => boolean | undefined;
+  delayRenderTimeoutMs?: number;
+}
+interface ExportFlagWindow {
+  __XMT_EXPORTING__?: boolean;
+  __XMT_EXPORT_DECODER_SEQ__?: number;
+  __XMT_EXPORT_SIGNAL__?: AbortSignal;
+  __XMT_EXPORT_OPEN_SOURCE__?: (src: string, signal?: AbortSignal) => Promise<void>;
+}
+
 
 export type BrowserVideoCodec = 'h264' | 'vp8';
 /** Server mezzanine codecs are accepted on the route planner, then forced off the browser path. */
@@ -188,39 +208,100 @@ async function executeBrowserRender(
   // Invariant: loadBrowserRenderConfig rejected prores before any render config existed.
   if (codec === 'prores') throw new Error('prores must be rejected by loadBrowserRenderConfig');
   const props: TimelineCompositionProps = { state, project, timelineId, transparent: false, browserRenderer: true };
-  try {
-    const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();
-    throwIfAborted(signal);
-    const result = await config.renderer.renderMediaOnWeb({
-      composition: {
-        id: 'openchatcut-timeline-browser',
-        component: TimelineComposition,
-        durationInFrames: Math.max(1, project && timelineId ? resolveTimelineRenderPlan(project, timelineId).durationInFrames : timelineDuration(state)),
-        fps: state.fps,
-        width: state.width,
-        height: state.height,
-        defaultProps: props,
-      },
-      inputProps: props,
-      container: config.container,
-      videoCodec: codec,
-      audioCodec: config.audioCodec,
-      scale: config.scale,
-      signal,
-      onProgress,
-      hardwareAcceleration: 'prefer-hardware',
-      pageResponsiveness: 'medium',
-      videoBitrate: config.videoBitrate,
-      audioBitrate: 'high',
-      transparent: false,
+  // xmt 导出加速运行时（宿主页在 Vite 入口之前加载 editor-export-acceleration.js）。
+  // 运行时不在时一切钩子短路，路径逐字等于无加速的浏览器导出。
+  const runtime = (globalThis as { __XMT_EXPORT_ACCELERATION__?: ExportAccelerationRuntime }).__XMT_EXPORT_ACCELERATION__;
+  const width = Math.max(1, Math.round(state.width * config.scale));
+  const height = Math.max(1, Math.round(state.height * config.scale));
+  const preflight = await (runtime?.selectEncoder?.({
+    codec, width, height, bitrate: config.videoBitrate, fps: state.fps, signal,
+  }) ?? Promise.resolve({ hardwareAcceleration: 'prefer-hardware' as const, reason: '未加载编码预检运行时' }));
+  let projectPrepared = false;
+  const attemptRender = async (hardwareAcceleration: 'prefer-hardware' | 'prefer-software') => {
+    const w = window as ExportFlagWindow;
+    const attemptToken = runtime?.beginAttempt?.({
+      codec, width, height, fps: state.fps, bitrate: config.videoBitrate,
+      hardwareAcceleration, outputTarget: 'opfs-auto',
     });
-    throwIfAborted(signal);
-    const blob = await result.getBlob();
-    throwIfAborted(signal);
-    return { status: 'rendered', blob, issues: config.issues };
+    w.__XMT_EXPORTING__ = true;
+    w.__XMT_EXPORT_DECODER_SEQ__ = 0;
+    w.__XMT_EXPORT_SIGNAL__ = signal;
+    try {
+      const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();
+      throwIfAborted(signal);
+      // Windows 上常见的失败是静默挂起而不是报错：渲染前先逐素材真实解帧规划
+      // （每个源只规划一次，软/硬重试共用）。
+      if (/Windows/.test(navigator.userAgent) && !projectPrepared) {
+        await runtime?.prepareProject?.({ project, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
+        projectPrepared = true;
+      }
+      throwIfAborted(signal);
+      const result = await config.renderer.renderMediaOnWeb({
+        composition: {
+          id: 'openchatcut-timeline-browser',
+          component: TimelineComposition,
+          durationInFrames: Math.max(1, project && timelineId ? resolveTimelineRenderPlan(project, timelineId).durationInFrames : timelineDuration(state)),
+          fps: state.fps,
+          width: state.width,
+          height: state.height,
+          defaultProps: props,
+        },
+        inputProps: props,
+        container: config.container,
+        videoCodec: codec,
+        audioCodec: config.audioCodec,
+        scale: config.scale,
+        signal,
+        onProgress: (progress) => {
+          onProgress?.(progress);
+          runtime?.noteProgress?.(attemptToken, progress);
+        },
+        hardwareAcceleration,
+        pageResponsiveness: 'low',
+        // OPFS 由加速运行时接管（内存 arraybuffer 在长片上会顶爆堆）。
+        outputTarget: null,
+        delayRenderTimeoutInMilliseconds: runtime?.delayRenderTimeoutMs ?? 120000,
+        videoBitrate: config.videoBitrate,
+        audioBitrate: 'high',
+        transparent: false,
+      });
+      throwIfAborted(signal);
+      const blob = await result.getBlob();
+      throwIfAborted(signal);
+      runtime?.finishAttempt?.(attemptToken, result, blob);
+      return { status: 'rendered' as const, blob, issues: config.issues };
+    } catch (error) {
+      runtime?.failAttempt?.(attemptToken, error);
+      throw error;
+    } finally {
+      delete w.__XMT_EXPORTING__;
+      delete w.__XMT_EXPORT_SIGNAL__;
+    }
+  };
+  const startedAt = performance.now();
+  const logPath = (path: string): void => {
+    console.info(`[export] 编码路径：${path}，预检：${preflight.reason ?? '无'}，总耗时 ${((performance.now() - startedAt) / 1000).toFixed(1)}s`);
+  };
+  try {
+    const attempt = await attemptRender(preflight.hardwareAcceleration);
+    logPath(preflight.hardwareAcceleration === 'prefer-hardware' ? '硬件优先（预检通过）' : '软件（预检已提前降级）');
+    return attempt;
   } catch (error) {
     throwIfAborted(signal);
-    throw error;
+    // 输入解码运行期失败：运行时先尝试恢复（例如清解码缓存/换源），成功则同路径整片重试。
+    if (await runtime?.recoverDecoder?.({ error, signal, openSource: (window as ExportFlagWindow).__XMT_EXPORT_OPEN_SOURCE__ })) {
+      console.warn('[export] 输入解码运行期恢复成功，整片重试一次：', error);
+      const attempt = await attemptRender(preflight.hardwareAcceleration);
+      logPath('输入解码恢复后重试');
+      return attempt;
+    }
+    if (preflight.hardwareAcceleration === 'prefer-software' || !runtime?.shouldFallbackEncoder?.(error)) throw error;
+    // 只有明确的 VideoEncoder/编码器错误才值得整片软件重跑；解码、网络、
+    // InputDisposedError、delayRender 失败用软件重跑只是把同一个失败慢放一遍。
+    console.warn('[export] 硬件编码器运行期失败，降软件编码整片重试一次：', error);
+    const attempt = await attemptRender('prefer-software');
+    logPath('软件（硬件编码器运行期失败后回退）');
+    return attempt;
   }
 }
 

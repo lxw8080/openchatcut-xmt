@@ -43,6 +43,18 @@ interface ProxyEntry {
 
 const proxyEntries = new Map<string, ProxyEntry>();
 
+const DEFAULT_PREVIEW_PROXY_ENDPOINT = '/api/preview-proxy';
+
+// xmt 宿主提供 previewProxyEndpoint（/editor/api/preview-proxy）；开发/独立
+// 运行时回落上游默认路径。
+function previewProxyEndpoint(): string {
+  if (typeof window !== 'undefined') {
+    const host = (window as { __XMT_EDITOR__?: { previewProxyEndpoint?: string } }).__XMT_EDITOR__;
+    if (host?.previewProxyEndpoint) return host.previewProxyEndpoint;
+  }
+  return DEFAULT_PREVIEW_PROXY_ENDPOINT;
+}
+
 function proxyEntry(src: string): ProxyEntry {
   let entry = proxyEntries.get(src);
   if (!entry) {
@@ -85,7 +97,7 @@ async function loadProxy(src: string, force: boolean, entry: ProxyEntry): Promis
   const query = `src=${encodeURIComponent(src)}${force ? '&force=1' : ''}`;
   const controller = new AbortController();
   entry.controller = controller;
-  entry.promise = fetch(`/api/preview-proxy?${query}`, { signal: controller.signal })
+  entry.promise = fetch(`${previewProxyEndpoint()}?${query}`, { signal: controller.signal })
     .then(async (response) => {
       if (!response.ok) throw new Error(await responseError(response));
       entry.response = await response.json() as PreviewProxyResponse;

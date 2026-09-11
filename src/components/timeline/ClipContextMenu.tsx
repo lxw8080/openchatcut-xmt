@@ -8,7 +8,8 @@ import { TRANSITION_LABELS, ZOOM_SHAPE_LABELS, type TimelineItem, type TimelineS
 import { ALL_FX, LUT_EFFECTS } from '../../gl/fx/effects';
 import { Icon, type IconName } from '../icons';
 import { useT } from '../../i18n/locale';
-import { contextReferenceItems } from './clipContextSelection';
+import { ReplaceClipDialog, xmtClipMeta } from '../../xmt/ReplaceClipDialog';
+import type { ClipClipboardOps } from '../../shortcuts/timelineApi';
 
 // speed presets for the variable speed submenu
 const SPEED_PRESETS = [0.25, 0.5, 1, 1.5, 2, 4] as const;
@@ -53,22 +54,23 @@ interface ClipContextMenuProps {
   /** Turn to video → bake to a video clip in place */
   onConvertToVideo: (item: TimelineItem) => void;
   onAddComment: (item: TimelineItem, frame: number, clientX: number, clientY: number) => void;
-  /** Add the clicked clip or its complete multi-selection as structured AI references. */
-  onAddToChat: (items: TimelineItem[]) => void;
   /** Pick a local replacement for this media clip. */
   onRelinkFile: (item: TimelineItem) => void;
+  /** Clip-level clipboard (⌘C/⌘X/⌘V semantics; item-only, no caption takeover) */
+  clipClipboard: ClipClipboardOps;
 }
 
 const PASTE_HINT = '⌘⌥V';
 
-export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo, onAddComment, onAddToChat, onRelinkFile }: ClipContextMenuProps) {
+export function ClipContextMenu({ item, transitions, x, y, playhead, commands, timeline, selectedIds, fxClip, onCopyFx, onClose, onExportMg, onConvertToVideo, onAddComment, onRelinkFile, clipClipboard }: ClipContextMenuProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
+  const xmtMeta = xmtClipMeta(item);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   // Right-click on a multi-selected clip → batch ops on the whole set (NLE convention).
   const batchIds = selectedIds.includes(item.id) && selectedIds.length > 1 ? selectedIds : [item.id];
-  const referenceItems = contextReferenceItems(item.id, selectedIds, timeline.items);
   const batchN = batchIds.length;
   // Multicam: need ≥2 selected video/audio with media
   const multicamIds = (batchN > 1 ? batchIds : selectedIds.length > 1 ? selectedIds : [])
@@ -206,6 +208,14 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
 
   return (
     <div ref={ref} style={style}>
+      {replaceOpen && (
+        <ReplaceClipDialog
+          item={item}
+          commands={commands}
+          timeline={timeline}
+          onClose={() => { setReplaceOpen(false); onClose(); }}
+        />
+      )}
       <Item label={t('添加评论')} icon="clipboard" onClick={run(() => onAddComment(item, reviewFrame, x, y))} />
       <Sep />
       <Item
@@ -245,8 +255,10 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
         onClick={run(() => toggleRelationship('sync-lock'))}
       />
       <Sep />
-      <Item label={t('复制')} icon="copy" shortcut="⌘C" onClick={run(() => commands.duplicateItem(item.id))} />
-      <Item label={t('切分')} icon="scissors" shortcut="C" disabled={!inside} onClick={run(() => commands.splitItem(item.id, playhead))} />
+      <Item label={batchN > 1 ? t('复制（{n}）', { n: batchN }) : t('复制')} icon="copy" shortcut="⌘C" onClick={run(() => clipClipboard.copy())} />
+      <Item label={batchN > 1 ? t('剪切（{n}）', { n: batchN }) : t('剪切')} icon="scissors" shortcut="⌘X" onClick={run(() => clipClipboard.cut())} />
+      <Item label={t('粘贴')} icon="clipboard" shortcut="⌘V" disabled={!clipClipboard.hasItems()} onClick={run(() => clipClipboard.paste())} />
+      <Item label={t('切分')} icon="blade" shortcut="C" disabled={!inside} onClick={run(() => commands.splitItem(item.id, playhead))} />
       <Sep />
       <Item label={applied.length ? t('已应用效果（{n}）', { n: applied.length }) : t('已应用效果')} icon="filter" chevron disabled={applied.length === 0}
         onClick={applied.length ? () => setShowApplied((v) => !v) : undefined} />
@@ -282,11 +294,13 @@ export function ClipContextMenu({ item, transitions, x, y, playhead, commands, t
         </div>
       )}
       <Sep />
-      <Item
-        label={batchN > 1 ? t('添加到 AI 对话框（{n}）', { n: batchN }) : t('添加到 AI 对话框')}
-        icon="sparkles"
-        onClick={run(() => onAddToChat(referenceItems))}
-      />
+      {xmtMeta && (
+        <Item
+          label={item.kind === 'solid' ? t('⚠ 替换占位素材（AI 候选）') : t('替换素材（AI 候选）')}
+          icon="swap"
+          onClick={() => setReplaceOpen(true)}
+        />
+      )}
       <Item label={t('重新链接文件')} icon="folder" disabled={!canRelink} onClick={run(() => onRelinkFile(item))} />
       <Sep />
       <Item label={t('导出 MG 动画')} icon="download" disabled={!isDom} onClick={run(() => onExportMg(item))} />

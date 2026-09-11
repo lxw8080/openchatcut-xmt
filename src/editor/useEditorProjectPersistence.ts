@@ -4,13 +4,7 @@ import { enqueueVisualAnalysis } from '../agent/progress/visual-analysis-jobs';
 import { useT } from '../i18n/locale';
 import { pendingAutosaveAfterObservation, recoverFailedAutosave } from '../persist/autosaveRecovery';
 import { acknowledgeIngestedGenerationResults, resumeOpenGenerationJobs } from '../persist/jobRegistryStore';
-import {
-  flushProjectSaves,
-  hasPendingProjectSaves,
-  hasProjectSaveFailure,
-  saveProject,
-} from '../persist/projectStore';
-import type { ProjectSaveResult } from '../persist/projectStoreCoordinators';
+import { saveXmtProject } from '../xmt/projectBridge';
 import { showAppToast } from '../ui/appToast';
 import type { EditorCommands } from './store';
 import type { ProjectDoc, TimelineState } from './types';
@@ -33,15 +27,21 @@ interface PendingSave {
   doc: ProjectDoc;
 }
 
+interface XmtSaveResult {
+  status: 'saved' | 'failed';
+}
+
 function usePendingSaveQueue(): {
   unsavedRef: MutableRef<PendingSave | null>;
-  enqueuePendingSave: () => Promise<ProjectSaveResult> | null;
+  inFlightRef: MutableRef<Promise<XmtSaveResult> | null>;
+  enqueuePendingSave: () => Promise<XmtSaveResult> | null;
 } {
   const t = useT();
   const unsavedRef = useRef<PendingSave | null>(null);
+  const inFlightRef = useRef<Promise<XmtSaveResult> | null>(null);
   const latestSaveAttemptRef = useRef(0);
   const saveFailureShownRef = useRef(false);
-  const observeSave = useCallback((result: ProjectSaveResult): void => {
+  const observeSave = useCallback((result: XmtSaveResult): void => {
     if (result.status === 'failed') {
       if (!saveFailureShownRef.current) {
         showAppToast(t('工程保存失败。请重试；在保存成功前不会关闭或切换工程。'), { error: true });
@@ -51,33 +51,40 @@ function usePendingSaveQueue(): {
     }
     saveFailureShownRef.current = false;
   }, [t]);
-  const enqueuePendingSave = useCallback((): Promise<ProjectSaveResult> | null => {
+  const enqueuePendingSave = useCallback((): Promise<XmtSaveResult> | null => {
     const pending = unsavedRef.current;
     if (!pending) return null;
     unsavedRef.current = null;
     const attempt = ++latestSaveAttemptRef.current;
-    const saving = saveProject(pending.projectId, pending.doc);
-    void saving.then((result) => {
-      if (result.status === 'failed') {
+    // xmt fork：保存直达宿主 API（PUT projectUrl，非 2xx 即失败重排），不再走
+    // 上游的 project-store 队列 —— 这里没有自有 server，localStorage 落盘等于丢稿。
+    const saving: Promise<XmtSaveResult> = saveXmtProject(pending.doc)
+      .then((): XmtSaveResult => ({ status: 'saved' }))
+      .catch((): XmtSaveResult => {
         unsavedRef.current = recoverFailedAutosave({
           currentUnsaved: unsavedRef.current,
           failedSnapshot: pending,
           failedAttempt: attempt,
           latestEnqueuedAttempt: latestSaveAttemptRef.current,
         });
-      } else if (result.status === 'saved') {
+        return { status: 'failed' };
+      });
+    inFlightRef.current = saving;
+    void saving.then((result) => {
+      if (inFlightRef.current === saving) inFlightRef.current = null;
+      if (result.status === 'saved') {
         void acknowledgeIngestedGenerationResults(pending.projectId, pending.doc.assets ?? []);
       }
       observeSave(result);
     });
     return saving;
   }, [observeSave]);
-  return { unsavedRef, enqueuePendingSave };
+  return { unsavedRef, inFlightRef, enqueuePendingSave };
 }
 
 function useEditorAutosave(projectId: string, doc: ProjectDoc): () => Promise<boolean> {
   const t = useT();
-  const { unsavedRef, enqueuePendingSave } = usePendingSaveQueue();
+  const { unsavedRef, inFlightRef, enqueuePendingSave } = usePendingSaveQueue();
   const previousDocumentRef = useRef<PendingSave | null>(null);
   useEffect(() => {
     const next = { projectId, doc };
@@ -89,27 +96,33 @@ function useEditorAutosave(projectId: string, doc: ProjectDoc): () => Promise<bo
     return () => clearTimeout(timer);
   }, [doc, enqueuePendingSave, projectId, unsavedRef]);
   const flushBeforeLeave = useCallback(async (): Promise<boolean> => {
-    enqueuePendingSave();
-    const result = await flushProjectSaves(projectId);
-    if (!result.ok) {
-      showAppToast(t('工程仍未保存，已阻止离开。请继续编辑以重试保存。'), { error: true });
-      return false;
+    const saving = enqueuePendingSave() ?? inFlightRef.current;
+    if (saving) {
+      const result = await saving;
+      if (result.status === 'failed') {
+        showAppToast(t('工程仍未保存，已阻止离开。请继续编辑以重试保存。'), { error: true });
+        return false;
+      }
     }
     return true;
-  }, [enqueuePendingSave, projectId, t]);
-  useBrowserSaveGuards(projectId, enqueuePendingSave);
+  }, [enqueuePendingSave, inFlightRef, t]);
+  useBrowserSaveGuards(enqueuePendingSave, unsavedRef, inFlightRef);
   return flushBeforeLeave;
 }
 
-function useBrowserSaveGuards(projectId: string, enqueuePendingSave: () => unknown): void {
+function useBrowserSaveGuards(
+  enqueuePendingSave: () => Promise<XmtSaveResult> | null,
+  unsavedRef: MutableRef<PendingSave | null>,
+  inFlightRef: MutableRef<Promise<XmtSaveResult> | null>,
+): void {
   useEffect(() => {
+    const hasUnfinishedSave = (): boolean => unsavedRef.current !== null || inFlightRef.current !== null;
     const flushWithoutWaiting = (): void => {
       enqueuePendingSave();
-      void flushProjectSaves(projectId);
     };
     const blockUnfinishedSave = (event: BeforeUnloadEvent): void => {
       enqueuePendingSave();
-      if (!hasPendingProjectSaves(projectId) && !hasProjectSaveFailure(projectId)) return;
+      if (!hasUnfinishedSave()) return;
       event.preventDefault();
       event.returnValue = '';
     };
@@ -120,7 +133,7 @@ function useBrowserSaveGuards(projectId: string, enqueuePendingSave: () => unkno
       window.removeEventListener('pagehide', flushWithoutWaiting);
       flushWithoutWaiting();
     };
-  }, [enqueuePendingSave, projectId]);
+  }, [enqueuePendingSave, inFlightRef, unsavedRef]);
 }
 
 function useGenerationJobResume(

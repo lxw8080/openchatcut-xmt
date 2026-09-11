@@ -67,6 +67,10 @@ export function ensureFont(family: string, _fontWeight = 400): Promise<void> {
   if (isGenericFontFamily(family)) return Promise.resolve();
   const canonical = resolveCanonicalFamily(family);
   if (!canonical) return Promise.resolve();
+  // xmt：LXGW WenKai TC 从 Google Fonts 来是 345 个子集文件，会被宿主页的
+  // CSP（font-src 'self'）拦掉；编辑器工程里保留族名，由打包的同源 WOFF2
+  // （editor/fonts/xmt-cjk-google-fallbacks.css）渲染，这里直接短路。
+  if (canonical === 'LXGW WenKai TC') return Promise.resolve();
   if (findLocalFont(canonical)) return ensureLocalFont(canonical);
   const metadata = GOOGLE_FONT_CATALOG.find((entry) => entry.family === canonical);
   if (!metadata) return Promise.resolve();
