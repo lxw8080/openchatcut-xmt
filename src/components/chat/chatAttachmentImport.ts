@@ -37,7 +37,6 @@ interface AttachmentImportBinding {
   readonly setError: (message: string | null) => void;
 }
 
-import { parseDocxText, parsePdfText } from './chatDocumentParse';
 
 const DOCUMENT_EXTENSIONS = new Set(['.md', '.markdown', '.txt', '.srt', '.csv']);
 
@@ -57,10 +56,10 @@ async function importDocument(binding: AttachmentImportBinding, file: File): Pro
   const kind = chatDocumentKind(file);
   let text: string;
   try {
-    const data = await file.arrayBuffer();
-    if (kind === 'docx') text = await parseDocxText(data);
-    else if (kind === 'pdf') text = await parsePdfText(data);
-    else text = await file.text();
+    // xmt build cut: mammoth/pdfjs are both absent (each drags in ~1-2MB of chunks that this
+    // host never uses); docx/pdf attachments fail fast with the existing parse-failed string.
+    if (kind === 'docx' || kind === 'pdf') throw new Error(binding.t('文档解析失败'));
+    text = await file.text();
   } catch (error) {
     binding.setError(error instanceof Error ? error.message : binding.t('文档解析失败'));
     return;
