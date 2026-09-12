@@ -268,7 +268,8 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             }} />
           )}
 
-          {/* playhead — GPU layer + rAF-coalesced updates for smoother scrub/play */}
+          {/* playhead — GPU layer + rAF-coalesced updates for smoother scrub/play.
+              Line stays pointer-transparent; the hit pad on the triangle grabs for scrub. */}
           <div
             ref={playheadLineRef}
             className="cc-playhead"
@@ -281,7 +282,20 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
               zIndex: 30,
             }}
           >
-            <div className="cc-playhead-handle" style={{ transform: 'translateX(-6px)', width: 13, height: 11, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+            <div
+              className="cc-playhead-hit"
+              style={{ pointerEvents: pickMode ? 'none' : 'auto' }}
+              onPointerDown={(e) => {
+                if (pickMode || e.button !== 0) return;
+                e.stopPropagation();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                seekTo(e.clientX);
+              }}
+              onPointerMove={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX);
+              }}
+            />
+            <div className="cc-playhead-handle" style={{ transform: 'translateX(-8px)', width: 17, height: 14, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
           </div>
         </div>
       </div>

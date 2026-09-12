@@ -41,9 +41,11 @@ function projectMoveDelta(
   const after = blocked.max + 1;
   const candidates = [before, after].filter((value) => value >= min && value <= max);
   if (!candidates.length) return null;
-  if (target > 0) return candidates.includes(before) ? before : after;
-  if (target < 0) return candidates.includes(after) ? after : before;
-  return candidates.toSorted((left, right) => Math.abs(left) - Math.abs(right) || right - left)[0]!;
+  // Prefer the gap closest to the requested drop — used for same-track scrub and
+  // cross-layer placement when the exact target frame cannot hold the clip.
+  return candidates.toSorted(
+    (left, right) => Math.abs(left - target) - Math.abs(right - target) || left - right,
+  )[0]!;
 }
 
 /** Clamp one shared move delta to frame zero and every stationary same-track clip. */

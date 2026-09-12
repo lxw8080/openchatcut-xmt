@@ -371,19 +371,28 @@ export function useTimelinePointer(deps: PointerDeps) {
     const floor = currentDrag.mode === 'trim-left'
       ? trimLeftFloor(currentDrag.id, currentDrag.baseStart)
       : -Infinity;
+    const targetTrack = currentDrag.mode === 'move'
+      ? trackFromClientY(clientY)
+      : currentDrag.baseTrack;
+    // Clamp against the *destination* lane while dragging across tracks; using
+    // the source lane blocked free cross-layer placement onto an empty target.
+    const trackShift = currentDrag.mode === 'move'
+      && targetTrack !== currentDrag.baseTrack
+      && trackKind(state, targetTrack) === trackKind(state, currentDrag.baseTrack)
+      && !state.tracks?.[targetTrack]?.locked
+      ? { from: currentDrag.baseTrack, to: targetTrack }
+      : null;
     const selectionDelta = currentDrag.mode === 'move'
       ? clampTimelineSelectionDelta(
         state,
         dragSelectionRef.current.itemIds,
         dragSelectionRef.current.captionSelections,
         snapped.deltaF,
+        trackShift,
       )
       : snapped.deltaF;
     const deltaF = Math.min(Math.max(selectionDelta, floor), cap);
     const snapAt = deltaF === snapped.deltaF ? snapped.snapAt : null;
-    const targetTrack = currentDrag.mode === 'move'
-      ? trackFromClientY(clientY)
-      : currentDrag.baseTrack;
     setDrag({ ...currentDrag, deltaF, targetTrack, snapAt }, publish);
   };
   const flushPointerMove = (publish: boolean) => {

@@ -867,7 +867,25 @@ button, input, select { font: inherit; }
 .cc-track-create-separator { height:0.5px; margin:4px 3px; background:var(--cc-border); }
 .cc-mic-group { height:28px; display:flex; align-items:center; padding-right:3px; border:0.5px solid var(--cc-border); border-radius:4px; color:var(--cc-text-muted); }
 .cc-timeline-timecode { min-width:174px; color:rgba(var(--cc-ink-rgb), 0.78); text-align:center; font-size:14px; letter-spacing:.02em; font-variant-numeric:tabular-nums; }
-.cc-timeline-zoom { width:92px; height:3px; margin:0; accent-color:var(--cc-text); cursor:pointer; }
+/* Hit area is intentionally taller than the visible track — the old 3px
+   control was nearly impossible to grab. Thumb stays small; padding is invisible. */
+.cc-timeline-zoom {
+  width:108px; height:18px; margin:0; appearance:none; background:transparent;
+  accent-color:var(--cc-text); cursor:pointer;
+}
+.cc-timeline-zoom::-webkit-slider-runnable-track {
+  height:4px; border-radius:999px; background:color-mix(in srgb, var(--cc-text) 35%, transparent);
+}
+.cc-timeline-zoom::-webkit-slider-thumb {
+  -webkit-appearance:none; width:14px; height:14px; margin-top:-5px; border:0; border-radius:50%;
+  background:var(--cc-text); box-shadow:0 0 0 1px rgba(var(--cc-shadow-rgb), 0.35);
+}
+.cc-timeline-zoom::-moz-range-track {
+  height:4px; border:0; border-radius:999px; background:color-mix(in srgb, var(--cc-text) 35%, transparent);
+}
+.cc-timeline-zoom::-moz-range-thumb {
+  width:14px; height:14px; border:0; border-radius:50%; background:var(--cc-text);
+}
 .cc-aspect-select { position:relative; width:24px; height:24px; display:grid; place-items:center; color:var(--cc-text-muted); cursor:pointer; }
 .cc-aspect-select:hover { border-radius:4px; background:var(--cc-hover); }
 .cc-aspect-select select { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
@@ -892,7 +910,12 @@ button, input, select { font: inherit; }
 .cc-ruler-head { position:sticky; left:0; z-index:11; flex-shrink:0; display:flex; align-items:center; justify-content:center; border-right:0.5px solid var(--cc-border); background:var(--cc-panel); }
 .cc-ruler-head span { color:rgba(var(--cc-ink-rgb), 0.61); font-size:14px; letter-spacing:.03em; font-variant-numeric:tabular-nums; }
 .cc-playhead { width:1px; background:var(--cc-accent); box-shadow:0 0 0 0.5px rgba(var(--cc-shadow-rgb), 0.45); }
-.cc-playhead-handle { position:sticky; top:0; background:var(--cc-accent); }
+.cc-playhead-handle { position:sticky; top:0; background:var(--cc-accent); pointer-events:none; }
+/* Wide invisible grab pad over the triangle — playhead itself stays 1px. */
+.cc-playhead-hit {
+  position:sticky; top:0; width:28px; height:22px; margin-left:-14px;
+  cursor:ew-resize; touch-action:none;
+}
 .cc-snap-guide { width:1px; z-index:29; background:var(--cc-accent); pointer-events:none; }
 .cc-track-row { display:flex; border-bottom:0.5px solid var(--cc-border); background:var(--cc-tl-side-panel); }
 .cc-track-head { position:sticky; left:0; z-index:10; flex-shrink:0; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; gap:2px; padding:5px 8px; border-right:0.5px solid var(--cc-border); background:var(--cc-panel); overflow:hidden; }
