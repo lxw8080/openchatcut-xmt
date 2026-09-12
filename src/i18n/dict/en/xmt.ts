@@ -27,4 +27,9 @@ export default {
   '没有符合条件的视频素材': 'No matching video assets',
   '上一页': 'Previous',
   '下一页': 'Next',
+  // ── 导出：宿主没有随附 server，成片只走浏览器 ──
+  '浏览器 WebCodecs 导出': 'Browser WebCodecs export',
+  '浏览器导出不可用：{reason}。可改用「使用本机导出」': 'Browser export unavailable: {reason}. Try "Local export" instead.',
+  '本站没有服务端渲染进程，无法提取音轨或渲染 ProRes 母带；成片请用浏览器导出或「使用本机导出」':
+    'This site has no server render process, so audio extraction and ProRes mezzanine exports are unavailable; export the video in the browser or use "Local export".',
 };

@@ -1,12 +1,24 @@
 import { inspectBrowserExport, isAbortError, type BrowserExportInspection, type BrowserExportOptions } from './browserExport';
 import type { ExportEngineInfo } from './exportWorkflowTypes';
 
+// xmt：成片导出只有一条路——浏览器 WebCodecs。
+//
+// 上游在这里还会探测 `/export/capabilities`，并在浏览器预检不过（或历史实测更
+// 快）时改走 `/export/job`——那是随附 server / 桌面壳的渲染进程。本 fork 跑在
+// xmt 的 /editor/<job> 外壳里，没有那个进程：这几条 URL 打到宿主上是 404，而
+// 上游的回退把它当成「兼容渲染」的应答，用户看到的就是一句
+// 「The requested URL was not found on the server」，真正的浏览器错误被吞掉
+// （2026-09-12 Windows 全工程导不出的事故）。xmt 自己的「使用本机导出」由宿主
+// 外壳经 xmt-renderer:// 协议唤起本地渲染器，不经过这个模块。
+//
+// 所以这里只回答一件事：浏览器这条路今天走不走得通、用不用得上硬件编码。走不通
+// 的原因原样带回去，由 videoExportOperation 以 preflight 失败报给人，绝不回退。
+
 const PERFORMANCE_STORAGE_KEY = 'cc.exportPerformance.v1';
 const MIN_SAMPLE_MS = 250;
 const MAX_PERFORMANCE_SAMPLES = 20;
 const PREVIOUS_SAMPLE_WEIGHT = 0.7;
 const CURRENT_SAMPLE_WEIGHT = 1 - PREVIOUS_SAMPLE_WEIGHT;
-
 
 interface EnginePerformance {
   samples: number;
@@ -16,17 +28,11 @@ interface EnginePerformance {
 type PerformanceStore = Record<string, EnginePerformance>;
 
 export interface ExportRoutePlan {
-  route: 'browser' | 'server';
+  route: 'browser';
   engine: ExportEngineInfo;
   browserEngine: ExportEngineInfo;
-  serverEngine: ExportEngineInfo;
   browser: BrowserExportInspection;
   reason: string;
-}
-
-interface ServerCapabilities {
-  h264?: ExportEngineInfo;
-  renderConcurrency?: number;
 }
 
 function browserEngine(powerEfficient?: boolean): ExportEngineInfo {
@@ -36,21 +42,6 @@ function browserEngine(powerEfficient?: boolean): ExportEngineInfo {
     hardware: powerEfficient === true,
     transport: 'browser',
   };
-}
-
-function unknownServerEngine(): ExportEngineInfo {
-  return { id: 'local-renderer', label: '本机兼容渲染', hardware: false, transport: 'server' };
-}
-
-async function loadServerCapabilities(signal?: AbortSignal): Promise<ServerCapabilities> {
-  try {
-    const response = await fetch('/export/capabilities', { signal });
-    if (!response.ok) return {};
-    return await response.json() as ServerCapabilities;
-  } catch (error) {
-    if (isAbortError(error)) throw error;
-    return {};
-  }
 }
 
 async function inspectBrowser(options: BrowserExportOptions): Promise<BrowserExportInspection> {
@@ -84,57 +75,13 @@ function performanceKey(engine: ExportEngineInfo): string {
   return `${engine.transport}:${engine.id}`;
 }
 
-function measuredRoute(browser: ExportEngineInfo, server: ExportEngineInfo): 'browser' | 'server' | null {
-  const store = loadPerformance();
-  const browserSample = store[performanceKey(browser)];
-  const serverSample = store[performanceKey(server)];
-  if (!browserSample?.samples || !serverSample?.samples) return null;
-  return browserSample.workPerMillisecond >= serverSample.workPerMillisecond ? 'browser' : 'server';
-}
-
-export function chooseSupportedRoute(browser: BrowserExportInspection, server: ExportEngineInfo) {
-  const web = browserEngine(browser.status === 'supported' ? browser.powerEfficient : undefined);
-  if (browser.status === 'unsupported') {
-    return { route: 'server' as const, engine: server, reason: browser.reason };
-  }
-  const measured = measuredRoute(web, server);
-  if (measured === 'browser') return { route: measured, engine: web, reason: '历史实测显示浏览器路径更快' };
-  if (measured === 'server') return { route: measured, engine: server, reason: '历史实测显示本机渲染器更快' };
-  if (browser.powerEfficient) return { route: 'browser' as const, engine: web, reason: '浏览器确认支持硬件高效编码' };
-  if (server.hardware) return { route: 'server' as const, engine: server, reason: '检测到本机硬件编码器' };
-  return { route: 'browser' as const, engine: web, reason: '浏览器兼容且无需额外渲染进程' };
-}
-
 export async function planVideoExportRoute(options: BrowserExportOptions): Promise<ExportRoutePlan> {
-  const [browser, capabilities] = await Promise.all([
-    inspectBrowser(options),
-    loadServerCapabilities(options.signal),
-  ]);
-  const server = options.codec === 'h264' ? capabilities.h264 ?? unknownServerEngine() : unknownServerEngine();
-  const browserEngineInfo = browserEngine(browser.status === 'supported' ? browser.powerEfficient : undefined);
-  // ProRes mezzanine is Remotion/server-only (not WebCodecs).
-  if (options.codec === 'prores') {
-    const mezzanine = {
-      id: 'prores-mezzanine',
-      label: 'ProRes 422 HQ · 本机母带',
-      hardware: false,
-      transport: 'server' as const,
-    };
-    return {
-      browser,
-      browserEngine: browserEngineInfo,
-      serverEngine: mezzanine,
-      route: 'server',
-      engine: mezzanine,
-      reason: 'ProRes 母带仅支持本机渲染',
-    };
-  }
-  return {
-    browser,
-    browserEngine: browserEngineInfo,
-    serverEngine: server,
-    ...chooseSupportedRoute(browser, server),
-  };
+  const browser = await inspectBrowser(options);
+  const engine = browserEngine(browser.status === 'supported' ? browser.powerEfficient : undefined);
+  const reason = browser.status === 'unsupported'
+    ? browser.reason
+    : browser.powerEfficient ? '浏览器确认支持硬件高效编码' : '浏览器 WebCodecs 导出';
+  return { route: 'browser', engine, browserEngine: engine, browser, reason };
 }
 
 export function recordExportPerformance(engine: ExportEngineInfo, metrics: {

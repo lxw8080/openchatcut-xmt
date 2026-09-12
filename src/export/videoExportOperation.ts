@@ -3,7 +3,6 @@ import { resolveTimelineRenderPlan, sequenceGraphError } from '../editor/sequenc
 import { recordExport } from '../persist/exportHistoryStore';
 import {
   browserScaledExportDimensions,
-  isAbortError,
   renderTimelineInBrowser,
   type BrowserExportAttempt,
   type BrowserExportOptions,
@@ -16,8 +15,7 @@ import {
   type ExportDestination,
 } from './exportDestination';
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
-import { isServerRenderError } from './serverExportOperation';
-import { createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
+import { createExportFailure, createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
 import type {
   BrowserAbortRef,
   ExportEngineInfo,
@@ -34,7 +32,6 @@ export interface VideoExportContext {
   autoQaEnabled: boolean;
   browserAbortRef: BrowserAbortRef;
   destination: ExportDestination;
-  exportServerVideo: (signal?: AbortSignal) => Promise<ExportJobResult>;
   beginTargetCommit(): void;
   endTargetCommit(): void;
   markTargetCommitted(): void;
@@ -93,40 +90,24 @@ function browserOptions(context: VideoExportContext, signal: AbortSignal): Brows
 }
 
 function setPlannedRoute(context: VideoExportContext, plan: ExportRoutePlan): void {
-  context.setRenderEngine(plan.route === 'browser' ? 'browser' : 'server');
+  context.setRenderEngine('browser');
   context.setEngineInfo(plan.engine);
   context.setEngineReason(plan.reason);
   context.setProgress((current) => current ? { ...current, detail: context.t(plan.reason) } : current);
 }
 
-function switchToServer(context: VideoExportContext, engine: ExportEngineInfo, reason: string): void {
-  context.setRenderEngine('server');
-  context.setEngineInfo(engine);
-  context.setEngineReason(reason);
-  context.setBusy(context.t('切换兼容渲染…'));
-  context.setProgress((current) => current ? {
-    ...current,
-    phase: 'preparing',
-    percent: 0,
-    processedFrames: undefined,
-    totalFrames: undefined,
-    detail: context.t('浏览器快导不可用：{reason}，已切换兼容渲染', { reason: context.t(reason) }),
-  } : current);
-}
-
-function switchToBrowser(context: VideoExportContext, engine: ExportEngineInfo, reason: string): void {
-  context.setRenderEngine('browser');
-  context.setEngineInfo(engine);
-  context.setEngineReason(reason);
-  context.setBusy(context.t('切换 WebCodecs…'));
-  context.setProgress((current) => current ? {
-    ...current,
-    phase: 'preparing',
-    percent: 0,
-    processedFrames: undefined,
-    totalFrames: undefined,
-    detail: context.t('本机渲染失败：{reason}，已切换 WebCodecs', { reason }),
-  } : current);
+// xmt：浏览器这条路走不通就是导出失败，原因原样报给人。
+//
+// 上游在这里回退到随附 server 的 `/export/job`；宿主没有那个进程，回退只会拿回
+// 一条 404，而它会顶替掉真正的原因（Windows 上是解码预检 / 抽帧失败）。真正的
+// 出路是宿主外壳的「使用本机导出」，所以文案把它指出来。
+function browserExportUnavailable(context: VideoExportContext, reason: string): ExportFailureError {
+  return new ExportFailureError(createExportFailure({
+    stage: 'preflight',
+    code: 'browser_export_unavailable',
+    retryable: false,
+    message: context.t('浏览器导出不可用：{reason}。可改用「使用本机导出」', { reason: context.t(reason) }),
+  }));
 }
 
 function browserResult(context: VideoExportContext, path: string, sizeBytes: number, engine: ExportEngineInfo) {
@@ -238,46 +219,16 @@ async function runBrowserRoute(
   return attempt;
 }
 
-async function runBrowserThenServer(
+async function runBrowserOnly(
   context: VideoExportContext,
   controller: AbortController,
   plan: ExportRoutePlan,
 ): Promise<void> {
+  if (plan.browser.status === 'unsupported') throw browserExportUnavailable(context, plan.browser.reason);
   const startedAt = performance.now();
-  let attempt: BrowserExportAttempt;
-  try {
-    attempt = await runBrowserRoute(context, controller, plan.browserEngine);
-  } catch (error) {
-    if (isAbortError(error)) throw error;
-    switchToServer(context, plan.serverEngine, error instanceof Error ? error.message : '浏览器快导失败');
-    await context.exportServerVideo(controller.signal);
-    return;
-  }
-  if (attempt.status === 'rendered') {
-    await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, controller.signal);
-    return;
-  }
-  switchToServer(context, plan.serverEngine, attempt.reason);
-  await context.exportServerVideo(controller.signal);
-}
-
-async function runServerThenBrowser(
-  context: VideoExportContext,
-  controller: AbortController,
-  plan: ExportRoutePlan,
-): Promise<void> {
-  try {
-    await context.exportServerVideo(controller.signal);
-    return;
-  } catch (error) {
-    if (isAbortError(error)) throw error;
-    if (!isServerRenderError(error) || plan.browser.status !== 'supported') throw error;
-    const reason = error.message || '本机渲染失败';
-    switchToBrowser(context, plan.browserEngine, reason);
-  }
-  const startedAt = performance.now();
+  // 渲染期抛出的错误（解码预检、抽帧超时、编码器）原样向上：那才是要给人看的那一句。
   const attempt = await runBrowserRoute(context, controller, plan.browserEngine);
-  if (attempt.status !== 'rendered') throw new Error(attempt.reason);
+  if (attempt.status !== 'rendered') throw browserExportUnavailable(context, attempt.reason);
   await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, controller.signal);
 }
 
@@ -296,8 +247,7 @@ async function exportVideo(context: VideoExportContext, ownerSignal?: AbortSigna
     const plan = await planVideoExportRoute(options);
     controller.signal.throwIfAborted();
     setPlannedRoute(context, plan);
-    if (plan.route === 'browser') await runBrowserThenServer(context, controller, plan);
-    else await runServerThenBrowser(context, controller, plan);
+    await runBrowserOnly(context, controller, plan);
   } finally {
     ownerSignal?.removeEventListener('abort', abortFromOwner);
     if (context.browserAbortRef.current === controller) context.browserAbortRef.current = null;

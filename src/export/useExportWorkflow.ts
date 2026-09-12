@@ -77,7 +77,6 @@ function createWorkflowOperations(
     autoQaEnabled,
     browserAbortRef,
     destination,
-    exportServerVideo: (signal) => exportServer('video', signal),
     options,
     verifyCompletedExport,
     t,

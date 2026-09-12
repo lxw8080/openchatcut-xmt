@@ -2,6 +2,7 @@ import type {
   ProjectStoreRequest,
   ProjectStoreResponse,
 } from '../../shared/project-store-transport';
+import { xmtHost } from '../xmt/host';
 
 const API_PATH = '/api/project-store';
 const browserOwnerships = new Map<string, BrowserProjectOwnership>();
@@ -94,6 +95,10 @@ function desktopTransport(): DesktopProjectStoreTransport | undefined {
 }
 
 function httpAvailable(): boolean {
+  // xmt 宿主没有 /api/project-store 与 /api/external-agent（它们是随附 server 的
+  // 能力）：在这里答「有」只会让共享库同步、外部 agent 桥与 server 导出恢复各自
+  // 往宿主打一串 404。答「没有」就是上游为纯浏览器场景准备的那条路（本地存储）。
+  if (xmtHost()) return false;
   // Any loopback http(s) page may use the shared library: the server
   // authorizes loopback requests by Origin/Sec-Fetch-Site alone.
   return typeof location !== 'undefined'

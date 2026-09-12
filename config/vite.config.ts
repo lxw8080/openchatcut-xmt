@@ -2,6 +2,7 @@ import { defineConfig, searchForWorkspaceRoot, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { xmtDecoderProbe } from './xmtDecoderProbe';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
@@ -56,7 +57,7 @@ export default defineConfig(() => {
       __CONFIGURED_CAPS__: JSON.stringify(FORK_CONFIGURED_CAPS),
     },
     publicDir: 'public',
-    plugins: [react(), excludeUserMediaFromBuild()],
+    plugins: [react(), excludeUserMediaFromBuild(), xmtDecoderProbe()],
     server: {
       port: 5199,
       strictPort: true,
@@ -88,6 +89,9 @@ export default defineConfig(() => {
             groups: [
               { name: 'babel', test: /node_modules[\\/]@babel[\\/]standalone/, priority: 30 },
               { name: 'templates', test: /openchatcut-templates\.json/, priority: 25, includeDependenciesRecursively: false },
+              // mediabunny 单独成片：xmt 侧的产物检查要能分清「@remotion/media 的 sink 工厂
+              // 带着解码预检钩子」与「mediabunny 本体一个字节没动」（见 config/xmtDecoderProbe.ts）。
+              { name: 'mediabunny', test: /node_modules[\\/]mediabunny[\\/]/, priority: 21 },
               { name: 'remotion', test: /node_modules[\\/](?:@remotion|remotion)[\\/]/, priority: 20 },
               { name: 'anthropic', test: /node_modules[\\/]@anthropic-ai[\\/]sdk/, priority: 15 },
               { name: 'react', test: /node_modules[\\/](?:react|react-dom)[\\/]/, priority: 10 },

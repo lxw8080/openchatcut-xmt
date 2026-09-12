@@ -22,6 +22,7 @@ import type {
   Translate,
   UseExportWorkflowOptions,
 } from './exportWorkflowTypes';
+import { xmtHost } from '../xmt/host';
 
 export interface ServerExportContext {
   autoQaEnabled: boolean;
@@ -126,6 +127,12 @@ async function submitExport(
   operationId: string,
   signal?: AbortSignal,
 ) {
+  // xmt：宿主没有随附 server 的渲染进程，/export/job 打过去只会拿回宿主的 404。
+  // 成片早已不走这里（videoExportOperation 只走浏览器）；剩下会到这里的是音轨
+  // （MP3）与 ProRes 母带——本站没有这两种产物，直说，别让一条 404 页顶替原因。
+  if (xmtHost()) {
+    throw new Error(context.t('本站没有服务端渲染进程，无法提取音轨或渲染 ProRes 母带；成片请用浏览器导出或「使用本机导出」'));
+  }
   const submission = await fetch('/export/job', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
