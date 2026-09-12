@@ -1,4 +1,5 @@
 import type { ExportQaExpectations, ExportQaReport } from './quality';
+import { xmtHost } from '../xmt/host';
 
 const STORAGE_KEY = 'cc.exportAutoQa.v1';
 export const MAX_EXPORT_QA_ATTEMPTS = 3;
@@ -33,6 +34,9 @@ export interface ExportQaRun {
 }
 
 export function loadExportAutoQaPreference(): ExportAutoQaPreference {
+  // xmt：自动 QA 要把整条成片 POST 到随附 server 的 /export/stage 再由它抽帧比对；
+  // 宿主没有那条路，开着它等于每次导出多传一遍几百 MB 然后拿回一个 404。
+  if (xmtHost()) return { enabled: false };
   try {
     const parsed = JSON.parse(globalThis.localStorage?.getItem(STORAGE_KEY) ?? 'null') as Partial<ExportAutoQaPreference> | null;
     return { enabled: parsed?.enabled !== false };

@@ -1,3 +1,5 @@
+import { xmtHost } from '../xmt/host';
+
 export interface StagedBrowserExport {
   path: string;
   sizeBytes: number;
@@ -9,6 +11,9 @@ export async function stageBrowserExport(
   signal?: AbortSignal,
 ): Promise<StagedBrowserExport> {
   signal?.throwIfAborted();
+  // xmt：宿主没有 /export/stage（随附 server 的 QA 暂存区）——在把整条成片传出去
+  // 之前就说清，而不是传完拿回 404。
+  if (xmtHost()) throw new Error('本站没有服务端 QA 暂存区，浏览器导出不做自动 QA');
   const response = await fetch(`/export/stage?name=${encodeURIComponent(filename)}`, {
     method: 'POST',
     headers: { 'Content-Type': blob.type || 'application/octet-stream' },
