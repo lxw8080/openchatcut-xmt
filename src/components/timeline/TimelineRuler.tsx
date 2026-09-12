@@ -23,6 +23,7 @@ interface TimelineRulerProps {
   pickMode: boolean;
   startPick: (e: React.PointerEvent, origin: TimelinePickDrag['origin']) => void;
   seekTo: (clientX: number) => void;
+  onFitToView?: () => void;
   rulerTimecodeRef: RefObject<HTMLSpanElement | null>;
   playheadFrame: number;
   zoneIn: number | null;
@@ -34,7 +35,7 @@ interface TimelineRulerProps {
 
 export function TimelineRuler({
   state, empty, px, majorFrames, minorFrames, minorTicksPerMajor, rulerEndFrame, visibleWindow,
-  pickMode, startPick, seekTo, rulerTimecodeRef, playheadFrame, zoneIn, zoneOut,
+  pickMode, startPick, seekTo, onFitToView, rulerTimecodeRef, playheadFrame, zoneIn, zoneOut,
   markers, onEditMarker, pinnedMarkerId,
 }: TimelineRulerProps) {
   const t = useT();
@@ -59,6 +60,13 @@ export function TimelineRuler({
       }}
       onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX); }}
       onPointerUp={(e) => { e.currentTarget.style.cursor = ''; }}
+      onDoubleClick={(e) => {
+        if (pickMode) return;
+        const target = e.target instanceof Element ? e.target : null;
+        if (target?.closest('.cc-marker-pin, [data-marker-pin]')) return;
+        e.preventDefault();
+        onFitToView?.();
+      }}
       style={{ display: 'flex', height: RULER_H, borderBottom: `0.5px solid ${theme.border}`, fontSize: 10, color: theme.textDim, cursor: pickMode ? 'crosshair' : 'pointer', userSelect: 'none' }}
     >
       <div className="cc-ruler-head" style={{ width: HEADER_W }}><span ref={rulerTimecodeRef}>{fmtClock(playheadFrame, state.fps)}</span></div>

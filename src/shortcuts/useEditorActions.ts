@@ -82,6 +82,7 @@ function editingActions(deps: EditorActionDeps): ActionBindings {
     'paste-effects': () => tl()?.pasteEffects(),
     duplicate: () => tl()?.duplicateSelected(),
     delete: ({ shift }) => tl()?.deleteSelected(shift),
+    'ripple-delete': () => tl()?.deleteSelected(true),
     split: () => tl()?.splitAtPlayhead(),
     'interaction-mode-selection': () => tl()?.setEditMode('selection'),
     'interaction-mode-trim': () => tl()?.setEditMode('trim'),

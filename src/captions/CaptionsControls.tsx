@@ -10,6 +10,7 @@ import { ManualCaptionEditor } from './ManualCaptionEditor';
 import { beginCaptionStylePointerDrag } from './captionStyleDrag';
 import { captionTemplatePatch } from './captionTemplatePatch';
 import { CaptionMotionControls } from './CaptionMotionControls';
+import { isFinalizedDisplayCaptions } from './finalizedDisplayCaptions';
 
 interface CaptionsControlsProps {
   captionTrackId?: TrackId;
@@ -52,6 +53,7 @@ export function CaptionsControls({
   const t = useT();
   const [bilingualOpen, setBilingualOpen] = useState(!!captions?.bilingual || !!captions?.translation);
   const style = captions ? CAPTION_STYLE_BY_ID[captions.template] : null;
+  const lockWordPacing = isFinalizedDisplayCaptions(captions);
   const pacingMeta = PACINGS.find((p) => p.v === (captions?.pacing ?? 'phrase')) ?? PACINGS[0]!;
 
   const translateLang = useMemo(() => {
@@ -149,22 +151,34 @@ export function CaptionsControls({
             {style && <p className="cc-cap-hint">{t(style.labelZh)}：{t(style.hint)} · {t('可拖到预览画面任意位置新建并编辑字幕')}</p>}
           </div>
 
-          {/* Rhythm*/}
+          {/* Rhythm — XMT 定稿行锁定 word，禁止切 phrase 重分页 */}
           <div className="cc-cap-field">
             <div className="cc-cap-label">{t('显示节奏')}</div>
             <div className="cc-cap-pills">
-              {PACINGS.map((p) => (
-                <button
-                  key={p.v}
-                  type="button"
-                  className={`cc-cap-pill${captions.pacing === p.v ? ' selected' : ''}`}
-                  onClick={() => onUpdate({ pacing: p.v })}
-                >
-                  {t(p.label)}
-                </button>
-              ))}
+              {PACINGS.map((p) => {
+                const locked = lockWordPacing && p.v === 'phrase';
+                return (
+                  <button
+                    key={p.v}
+                    type="button"
+                    className={`cc-cap-pill${captions.pacing === p.v ? ' selected' : ''}`}
+                    disabled={locked}
+                    title={locked ? t('成片定稿字幕按行显示，切换节奏会打乱行界') : undefined}
+                    onClick={() => {
+                      if (locked) return;
+                      onUpdate({ pacing: p.v });
+                    }}
+                  >
+                    {t(p.label)}
+                  </button>
+                );
+              })}
             </div>
-            <p className="cc-cap-hint">{t(pacingMeta.hint)}</p>
+            <p className="cc-cap-hint">
+              {lockWordPacing
+                ? t('成片定稿字幕固定为逐行显示，保留断行与句间空隙。')
+                : t(pacingMeta.hint)}
+            </p>
           </div>
 
           <CaptionMotionControls

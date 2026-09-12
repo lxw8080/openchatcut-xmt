@@ -1,13 +1,26 @@
 import type { TimelineItem } from '../editor/types';
 import type { CaptionsData, TranslatedCue } from './types';
-import { CAPTION_MAX_CHARS_PER_LINE, CAPTION_MAX_VISUAL_LINES, paginate } from './types';
-import { resolveCaptionWords } from './resolve';
+import {
+  CAPTION_MAX_CHARS_PER_LINE,
+  CAPTION_MAX_VISUAL_LINES,
+  joinCaptionWords,
+  paginate,
+} from './types';
+import {
+  applyWordOverrides,
+  resolveCaptionWordIndices,
+  resolveCaptionWordRefs,
+  resolveCaptionWords,
+} from './resolve';
 import { CAPTION_STYLE_BY_ID } from './styles';
 
 // Translate the current caption phrases into `lang`, keeping each translation
 // timed to its source phrase. Data model: a transcript translation VARIANT that
 // shares the timeline (manage_transcript). Phrase-level (not word),
 // since word order differs across languages; the variant reuses phrase timing.
+//
+// Must mirror buildCaptionPages for standalone words: apply wordOverrides
+// (edits / hidden / forceBreak) before paginate, and join with CJK-aware spacing.
 export async function buildTranslation(
   captions: CaptionsData,
   items: TimelineItem[],
@@ -15,18 +28,31 @@ export async function buildTranslation(
   lang: string,
 ): Promise<TranslatedCue[]> {
   const words = resolveCaptionWords(captions, items, fps);
-  const pages = paginate(
+  const refs = resolveCaptionWordRefs(captions, items, fps);
+  const applied = applyWordOverrides(
     words,
+    resolveCaptionWordIndices(captions, items, fps),
+    captions.wordOverrides,
+    refs,
+  );
+  const pages = paginate(
+    applied.words,
     captions.pacing,
     CAPTION_STYLE_BY_ID[captions.template].wordsPerPage,
-    undefined,
+    applied.breakBefore,
     CAPTION_MAX_CHARS_PER_LINE,
     CAPTION_MAX_VISUAL_LINES,
   );
-  const phrases = pages.map((p) => p.words.map((w) => w.text).join(' ').trim()).filter(Boolean);
+  const phrases = pages.map((p) => joinCaptionWords(p.words).trim()).filter(Boolean);
   if (!phrases.length) return [];
   const translated = await translateLines(phrases, lang);
-  return pages.map((p, i) => ({ start: p.start, end: p.end, text: translated[i] ?? '' }));
+  // Keep 1:1 with pages (including blank after filter) — index by page order.
+  let ti = 0;
+  return pages.map((p) => {
+    const source = joinCaptionWords(p.words).trim();
+    const text = source ? (translated[ti++] ?? '') : '';
+    return { start: p.start, end: p.end, text };
+  });
 }
 
 // Translate an ordered list of lines (phrases OR source words); returns the same

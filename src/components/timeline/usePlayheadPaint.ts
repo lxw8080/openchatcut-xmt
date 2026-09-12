@@ -1,9 +1,10 @@
 // Playhead drawing machine (translated verbatim from Timeline.tsx):frameupdate → rAF frame-drawn playhead line
 // (GPU transform) timecode text with ~12fps throttling; Player instance watchdog (preview re-hang and re-subscribe monitoring,
 // Repair the root cause of needle freezing); resume playback at breakpoint (throttle persistence + one-time recovery after project attachment).
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import type { CallbackListener, PlayerRef } from '@remotion/player';
 import { loadTimelineView, saveTimelineView } from '../../persist/sessionPrefs';
+import { followPlayheadScrollLeft } from '../../editor/timelineViewport';
 import { HEADER_W, fmt, fmtClock } from './timelineUtil';
 
 export interface AudibleAudioItem {
@@ -24,6 +25,13 @@ interface PlayheadDeps {
   fps: number;
   total: number;
   px: number;
+  /** Shared with zoom controller so time zoom can anchor on the playhead. */
+  playheadRef: MutableRefObject<number>;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  /** When true, skip auto-follow until the next play. */
+  followSuppressedRef: MutableRefObject<boolean>;
+  /** Cleared on play so user pan/scroll can suppress follow again later. */
+  onPlayResumeFollow?: () => void;
   /**
    * Marking mode: returns the audio item audible at the given playhead frame,
    * or null when the playhead should keep following the Player's frame clock.
@@ -102,7 +110,10 @@ export function attachPlayheadMediaSync(
   };
 }
 
-export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total, px, getAudibleItem }: PlayheadDeps) {
+export function usePlayheadPaint({
+  playerRef, projectId, timelineId, fps, total, px, playheadRef, scrollRef,
+  followSuppressedRef, onPlayResumeFollow, getAudibleItem,
+}: PlayheadDeps) {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const timelineIdRef = useRef(timelineId);
@@ -113,17 +124,20 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
   fpsRef.current = fps;
   const getAudibleItemRef = useRef(getAudibleItem);
   getAudibleItemRef.current = getAudibleItem;
+  const onPlayResumeFollowRef = useRef(onPlayResumeFollow);
+  onPlayResumeFollowRef.current = onPlayResumeFollow;
   // Restore once per project + timeline pair. A missing record deliberately seeks
   // to frame 0 instead of inheriting the Player's stale frame from another tab.
   const restoredForRef = useRef<string | null>(null);
   const pxRef = useRef(px);
   pxRef.current = px;
-  const playheadRef = useRef(0);
+  const playingRef = useRef(false);
   const playheadLineRef = useRef<HTMLDivElement | null>(null);
   const toolbarTimecodeRef = useRef<HTMLSpanElement | null>(null);
   const rulerTimecodeRef = useRef<HTMLSpanElement | null>(null);
   const timecodePreviewFrameRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState(false);
+  playingRef.current = playing;
   // Marking mode: last playhead frame derived from the audible media element's
   // own clock. Non-null while the audio clock owns the playhead; the Player's
   // frameupdate then only feeds the fallback/resume reference.
@@ -134,6 +148,15 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
   const pendingFrameRef = useRef<number | null>(null);
   const paintRafRef = useRef(0);
   const lastTcPaintRef = useRef(0);
+  const followPlayhead = (frame: number) => {
+    if (!playingRef.current || followSuppressedRef.current) return;
+    const element = scrollRef.current;
+    if (!element) return;
+    const next = followPlayheadScrollLeft(
+      element.scrollLeft, frame, HEADER_W, pxRef.current, element.clientWidth,
+    );
+    if (next != null && next !== element.scrollLeft) element.scrollLeft = next;
+  };
   const paintPlayhead = (frame: number, forceTc = false) => {
     const current = Math.max(0, frame);
     playheadRef.current = current;
@@ -141,6 +164,7 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
     if (playheadLineRef.current) {
       playheadLineRef.current.style.transform = `translate3d(${x}px,0,0)`;
     }
+    followPlayhead(current);
     // timecode text is expensive; refresh ~12fps while playing
     const now = performance.now();
     if (forceTc || now - lastTcPaintRef.current > 80) {
@@ -219,7 +243,10 @@ export function usePlayheadPaint({ playerRef, projectId, timelineId, fps, total,
         () => playheadRef.current,
         onFrame,
       );
-      const onPlay = () => setPlaying(true);
+      const onPlay = () => {
+        onPlayResumeFollowRef.current?.();
+        setPlaying(true);
+      };
       const onPause = () => {
         setPlaying(false);
         // Prefer the last audio-clock frame when marking mode was active, so

@@ -78,7 +78,7 @@ From left to right:
 ### Playback Controls (above the timeline)
 
 - **Split tool** (shortcut: C) — Split the clip at the playhead position.
-- **Snapping toggle** (shortcut: Shift+M) — Enable/disable snap-to-grid when dragging items on the timeline.
+- **Snapping toggle** (shortcut: S) — Enable/disable snap-to-grid when dragging items on the timeline.
 - **Play / Pause** (shortcut: Space)
 - **Time display** — Current position / total duration.
 - **Zoom controls** — Zoom in/out on the timeline, plus "Zoom to Fit" to show the full timeline.

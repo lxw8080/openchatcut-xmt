@@ -33,10 +33,12 @@ function SingleStreamCaptions({ captions, items, ms, width, height, fps }: { cap
   const preset = useMemo(() => effectivePreset(captions), [captions]);
 
   const pages = useMemo(() => buildCaptionPages(captions, items, fps), [captions, items, fps]);
-  const page = activeCaptionPages(pages, ms)[0]?.page;
+  const page = activeCaptionPages(pages, ms, captions.pacing)[0]?.page;
   if (!page) return null;
   const curIdx = currentWordIndex(page, ms);
-  const translated = captions.bilingual && captions.translation ? activeTranslation(captions.translation, ms) : null;
+  const translated = captions.bilingual && captions.translation
+    ? activeTranslation(captions.translation, ms, captions.pacing)
+    : null;
 
   return (
     <AbsoluteFill style={CAPTION_OVERLAY_STYLE}>

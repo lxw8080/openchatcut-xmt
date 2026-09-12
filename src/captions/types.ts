@@ -1,6 +1,13 @@
 import type { TranscriptWord } from '../transcript/types.js';
 import type { CaptionStyleOverride } from './styles.js';
 import { segmentWords } from './segmenter.js';
+export {
+  LINGER_MS,
+  holdModeForPacing,
+  pageVisibleUntil,
+  type CaptionHoldMode,
+} from './captionHold.js';
+import { holdModeForPacing, pageVisibleUntil } from './captionHold.js';
 
 /** 3×3 title-safe anchors + shorthands (edit_captions action=layout preset). */
 export type CaptionAnchor =
@@ -168,7 +175,6 @@ export interface CaptionPage {
 }
 
 const MAX_PHRASE_WORDS = 6;
-export const LINGER_MS = 1500;
 /** Shared preview/export contract: phrase pages fit at most two estimated visual lines. */
 export const CAPTION_MAX_VISUAL_LINES = 2;
 export const CAPTION_MAX_CHARS_PER_LINE = 24;
@@ -214,11 +220,16 @@ function paginateContentAware(words: TranscriptWord[], maxPhraseWords: number, b
 }
 
 // The page to show at time `ms`: the latest page whose start has passed, held
-// until the next page starts (or LINGER_MS after the last page's end).
-export function activePage(pages: CaptionPage[], ms: number): CaptionPage | null {
+// per `holdModeForPacing` (phrase → until next start; word → until page.end).
+export function activePage(
+  pages: CaptionPage[],
+  ms: number,
+  pacing?: CaptionPacing,
+): CaptionPage | null {
+  const mode = holdModeForPacing(pacing);
   for (let i = pages.length - 1; i >= 0; i--) {
     if (ms >= pages[i].start) {
-      const until = pages[i + 1]?.start ?? pages[i].end + LINGER_MS;
+      const until = pageVisibleUntil(pages[i].end, pages[i + 1]?.start, mode);
       return ms < until ? pages[i] : null;
     }
   }
@@ -232,11 +243,16 @@ export function currentWordIndex(page: CaptionPage, ms: number): number {
   return idx;
 }
 
-// The translated cue active at time `ms` (held until the next cue starts).
-export function activeTranslation(cues: TranslatedCue[], ms: number): TranslatedCue | null {
+// The translated cue active at time `ms` (same hold policy as the main line).
+export function activeTranslation(
+  cues: TranslatedCue[],
+  ms: number,
+  pacing?: CaptionPacing,
+): TranslatedCue | null {
+  const mode = holdModeForPacing(pacing);
   for (let i = cues.length - 1; i >= 0; i--) {
     if (ms >= cues[i].start) {
-      const until = cues[i + 1]?.start ?? cues[i].end + LINGER_MS;
+      const until = pageVisibleUntil(cues[i].end, cues[i + 1]?.start, mode);
       return ms < until ? cues[i] : null;
     }
   }

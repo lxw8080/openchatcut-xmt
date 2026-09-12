@@ -4,9 +4,8 @@ import { buildCues, cueTextPatch, type CueRow } from './captionCues';
 import { buildLaneGroups } from './lanes';
 import { isManualCaptionEntry, removeManualCue, updateManualCue } from './manualCaptions';
 import { effectivePreset } from './renderStyles';
-import type { CaptionLayout, CaptionsData } from './types';
-
-const LINGER_MS = 1_500;
+import type { CaptionLayout, CaptionPacing, CaptionsData } from './types';
+import { holdModeForPacing, pageVisibleUntil } from './types';
 
 interface PreviewCue {
   id?: string;
@@ -48,10 +47,11 @@ const NUDGE_DELTAS: Record<CaptionPreviewNudgeDirection, { x: number; y: number 
 
 const roundedRatio = (value: number): number => Math.round(value * 10_000) / 10_000;
 
-function activeCueIndex(rows: CueRow[], ms: number): number {
+function activeCueIndex(rows: CueRow[], ms: number, pacing?: CaptionPacing): number {
+  const mode = holdModeForPacing(pacing);
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     if (ms < rows[index]!.start) continue;
-    const until = rows[index + 1]?.start ?? rows[index]!.end + LINGER_MS;
+    const until = pageVisibleUntil(rows[index]!.end, rows[index + 1]?.start, mode);
     return ms < until ? index : -1;
   }
   return -1;
@@ -108,7 +108,7 @@ export function findCaptionPreviewTarget(
     if (manual) return manual;
   }
   const rows = singleRows ?? buildCues(captions, items, fps);
-  const cueIndex = activeCueIndex(rows, ms);
+  const cueIndex = activeCueIndex(rows, ms, captions.pacing);
   const cue = rows[cueIndex];
   return cue
     ? { kind: 'single', key: `single:${cue.id}`, pageId: cue.id, cue, cueIndex, rows, preset: effectivePreset(captions), layout: captions.layout }

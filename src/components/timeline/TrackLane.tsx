@@ -182,8 +182,11 @@ export function TrackLane({
       }}
       onPointerDown={(e) => {
         if (pickMode) { startPick(e, 'lane'); return; }
-        // selection mode: empty-lane drag → marquee multi-select
-        if (editMode === 'selection' && !locked) startMarquee(e);
+        // Plain empty-lane drag scrubs the playhead (CapCut-style). Additive
+        // modifiers keep the rubber-band multi-select gesture.
+        if (editMode === 'selection' && !locked && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+          startMarquee(e);
+        }
       }}
       onContextMenu={(e) => {
         const target = e.target instanceof Element ? e.target : null;
@@ -407,7 +410,7 @@ export function TrackLane({
             })()}
             <span className="cc-clip-duration" data-cc-live-duration={dur}>{fmt(dur, state.fps)}</span>
             <ClipEffectBadges item={it} inTransition={indexes.transitionByIncomingId.get(it.id) ?? null} />
-            {/* pen mode: keyframe rubber band on the selected clip (vertical = value; audio = volume 0..2, rest = transparency 0..1)*/}
+            {/* pen mode: keyframe rubber band on the selected clip (vertical = value; audio = volume 0..8, rest = transparency 0..1)*/}
             {editMode === 'pen' && selected && (() => {
               const prop = it.kind === 'audio' ? 'volume' as const : 'opacity' as const;
               const [lo, hi] = getKeyframePropertyDefinition(prop).editorRange;

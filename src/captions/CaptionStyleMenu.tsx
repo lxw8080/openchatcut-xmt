@@ -14,6 +14,7 @@ import { useT } from '../i18n/locale';
 import { captionsForTrack } from './captionTrack';
 import { newManualCaptions } from './manualCaptions';
 import { captionTemplatePatch } from './captionTemplatePatch';
+import { isFinalizedDisplayCaptions } from './finalizedDisplayCaptions';
 import { MenuDrillHeader } from '../components/timeline/MenuDrillHeader';
 
 const CAPTION_LANGS = ['English', '日本語', '한국어', 'Español', 'Français', 'Deutsch', 'Português'];
@@ -82,10 +83,12 @@ export function CaptionStyleMenu({ state, commands, trackId, pos, error, onError
   };
   const applyPreset = (preset: CaptionPreset) => {
     const captions = captionsForTrack(state, trackId) ?? newManualCaptions();
+    // 定稿显示行禁止预设静默改写 pacing（会毁掉 word 行界 + until-end hold）。
+    const keepPacing = isFinalizedDisplayCaptions(current ?? captions);
     const patch: Partial<CaptionsData> = {
       enabled: true,
       ...captionTemplatePatch(captions, preset.template ?? captions.template, preset.styleOverride),
-      ...(preset.pacing ? { pacing: preset.pacing } : {}),
+      ...(preset.pacing && !keepPacing ? { pacing: preset.pacing } : {}),
     };
     if (current) commands.updateCaptions(patch, trackId);
     else commands.setCaptions({ ...captions, ...patch }, trackId);

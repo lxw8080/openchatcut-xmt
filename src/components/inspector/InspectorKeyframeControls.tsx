@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type PropsWithChildren } from 'react';
 import type { ClipTransform, Keyframe, KeyframeEasing, KeyframeProp, TimelineItem } from '../../editor/types';
 import { sampleKeyframes } from '../../editor/keyframes';
 import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyframeRegistry';
+import { MAX_ITEM_VOLUME, MIN_ITEM_VOLUME } from '../../editor/volumeLimits';
 import { useT } from '../../i18n/locale';
 import { Icon } from '../icons';
 import { ScalarControl } from './ScalarControl';
@@ -242,7 +243,7 @@ export function VolumeControl({
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <SliderRow label={t('音量')} val={vol} min={0} max={2} step={0.05} fmt={`${Math.round(vol * 100)}%`}
+          <SliderRow label={t('音量')} val={vol} min={MIN_ITEM_VOLUME} max={MAX_ITEM_VOLUME} step={0.05} fmt={`${Math.round(vol * 100)}%`}
             inputScale={100}
             mixed={mixed}
             disabled={!!kfs?.length && !kf.inRange}

@@ -132,7 +132,7 @@ export function resolveEffectiveCaptionLanes(
  * takes the old single-stream path). */
 export function laneGroupsFromPages(pages: CaptionPageIdentity[], captions: CaptionsData, ms: number): LaneGroup[] | null {
   if (!captions.sourceEntries?.length) return null;
-  const active = activeCaptionPages(pages, ms)
+  const active = activeCaptionPages(pages, ms, captions.pacing)
     .flatMap((identity) => identity.entry
       ? [{ entry: identity.entry, lane: { entry: identity.entry, page: identity.page, pageId: identity.id, curIdx: currentWordIndex(identity.page, ms) } }]
       : []);

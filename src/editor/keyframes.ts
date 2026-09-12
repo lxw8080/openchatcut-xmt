@@ -4,6 +4,7 @@
 // pre-split and post-split sampling agree exactly (straddled bezier segments are
 // de-Casteljau-subdivided, never approximated).
 import type { ItemKeyframes, Keyframe, KeyframeEasing, KeyframeProp } from './types.js';
+import { clampItemVolume } from './volumeLimits.js';
 
 /** CSS timing-function control points for the named easings. */
 const NAMED_BEZIER: Record<string, readonly [number, number, number, number]> = {
@@ -89,7 +90,7 @@ export function sampleKeyframes(kfs: readonly Keyframe[], frame: number): number
 /**
  * Effective playback volume at an item-local edited frame: volume keyframes
  * override the static item.volume (same override rule the inspector uses for
- * every keyframed prop). Clamped to the volume valueRange 0..2 because bezier
+ * every keyframed prop). Clamped to MAX_ITEM_VOLUME because bezier
  * easings can overshoot between in-range keyframes.
  */
 export function volumeAtFrame(
@@ -98,7 +99,7 @@ export function volumeAtFrame(
 ): number {
   const kfs = item.keyframes?.volume;
   if (!kfs?.length) return item.volume ?? 1;
-  return Math.min(2, Math.max(0, sampleKeyframes(kfs, localFrame)));
+  return clampItemVolume(sampleKeyframes(kfs, localFrame));
 }
 
 /** replace-or-insert a keyframe (same frame overwrites); returns a sorted copy. */

@@ -14,9 +14,11 @@ import { orderedCaptionSourceEntries } from './sourceOrder.js';
 import {
   CAPTION_MAX_CHARS_PER_LINE,
   CAPTION_MAX_VISUAL_LINES,
-  LINGER_MS,
+  holdModeForPacing,
+  pageVisibleUntil,
   paginate,
   type CaptionPage,
+  type CaptionPacing,
   type CaptionsData,
   type CaptionSourceEntry,
 } from './types.js';
@@ -139,7 +141,11 @@ function lastStartedIndex(lane: readonly CaptionPageIdentity[], ms: number): num
   return found;
 }
 
-export function activeCaptionPages(pages: readonly CaptionPageIdentity[], ms: number): CaptionPageIdentity[] {
+export function activeCaptionPages(
+  pages: readonly CaptionPageIdentity[],
+  ms: number,
+  pacing?: CaptionPacing,
+): CaptionPageIdentity[] {
   // Group by lane with plain push — the previous [...(lane ?? []), page] copy
   // was O(n²) array churn per call (the hot per-frame lookup path).
   const byLane = new Map<string, CaptionPageIdentity[]>();
@@ -148,6 +154,7 @@ export function activeCaptionPages(pages: readonly CaptionPageIdentity[], ms: nu
     if (lane) lane.push(page);
     else byLane.set(page.laneId, [page]);
   }
+  const mode = holdModeForPacing(pacing);
   return [...byLane.values()].flatMap((lane) => {
     if (lane[0]?.manual) {
       // Manual cues may overlap: the latest started page wins while on screen;
@@ -163,7 +170,7 @@ export function activeCaptionPages(pages: readonly CaptionPageIdentity[], ms: nu
     const i = lastStartedIndex(lane, ms);
     if (i < 0) return [];
     const active = lane[i].page;
-    const until = lane[i + 1]?.page.start ?? active.end + LINGER_MS;
+    const until = pageVisibleUntil(active.end, lane[i + 1]?.page.start, mode);
     return ms < until ? [lane[i]] : [];
   }).sort((left, right) => left.laneOrder - right.laneOrder || left.id.localeCompare(right.id));
 }

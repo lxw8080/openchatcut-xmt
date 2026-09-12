@@ -24,6 +24,9 @@ export function useShortcutDispatcher(
       const nk = normalizeKey(e.key);
       if (!['shift', 'control', 'alt', 'meta'].includes(nk)) held.add(nk);
       if (e.defaultPrevented) return;
+      // Key-repeat must not re-fire actions: Space is held for timeline pan
+      // (Space+drag) and would otherwise spam play-pause.
+      if (e.repeat) return;
 
       // Shift+Backspace is ripple-delete — special case: still match delete with shift
       const selection = window.getSelection();

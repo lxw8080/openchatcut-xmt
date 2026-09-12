@@ -11,6 +11,8 @@ export default {
   '选择模式：点片段引用 · 拖过标尺/空白选时间段 · 单击标尺打时间点 — 引用会加进聊天输入框':
     'Selection mode: click a clip for an item reference · drag across the ruler/empty space for a time range · click the ruler for a timepoint — references are added to the chat input',
   'Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度': 'Ctrl/⌘+wheel to zoom the timeline · Alt+wheel to zoom track height',
+  'Ctrl/⌘+滚轮 指针处缩放 · 滑块/快捷键以播放头缩放 · 双指横滑平移 · 中键或空格+拖平移 · Alt+滚轮缩放轨道高度':
+    'Ctrl/⌘+wheel zooms at the cursor · slider/shortcuts zoom at the playhead · two-finger swipe pans · middle-click or Space+drag pans · Alt+wheel zooms track height',
   '视': 'V',
   '音': 'A',
   '字': 'C',

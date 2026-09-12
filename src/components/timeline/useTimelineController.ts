@@ -72,7 +72,20 @@ export function useTimelineController({
     startX: number;
     startY: number;
     dragged: boolean;
+    /** Continuous scrub on empty lane (CapCut-style). */
+    scrubbing: boolean;
   } | null>(null);
+  const panGestureRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originScrollLeft: number;
+    originScrollTop: number;
+  } | null>(null);
+  const followSuppressedRef = useRef(false);
+  const spacePanArmedRef = useRef(false);
+  const suppressFollow = useCallback(() => { followSuppressedRef.current = true; }, []);
+  const resumeFollow = useCallback(() => { followSuppressedRef.current = false; }, []);
   const [hoverPreviewFrame, setHoverPreviewFrame] = useState<number | null>(null);
   const hoverPreviewFrameRef = useRef<number | null>(null);
   const [captionSelectionMovePreview, setCaptionSelectionMovePreview] = useState<TimelineSelectionMovePreview | null>(null);
@@ -89,8 +102,13 @@ export function useTimelineController({
     const next = moveTimelineSelectionByDelta(current, itemIds, captionSelections, deltaFrames);
     if (next !== current) commands.applyState(next);
   }, [commands]);
+  // Shared so zoom can keep the playhead fixed on screen while time-scale changes.
+  const playheadRef = useRef(0);
   const { zoom, setZoom, zoomBy, fitToView, pixelsPerFrame: px, trackScale } =
-    useTimelineZoomController({ scrollRef, totalFrames: total, fps: state.fps, projectId, timelineId });
+    useTimelineZoomController({
+      scrollRef, playheadRef, onUserScroll: suppressFollow,
+      totalFrames: total, fps: state.fps, projectId, timelineId,
+    });
   const metaOf = (id: TrackId) => {
     const kind = trackKind(state, id);
     const color = kind === 'caption' ? theme.trackCaption
@@ -119,10 +137,13 @@ export function useTimelineController({
     };
   }, []);
   const {
-    playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
+    playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
     paintPlayhead, setTimecodePreviewFrame, playing,
   } =
-    usePlayheadPaint({ playerRef, projectId, timelineId, fps: state.fps, total, px, getAudibleItem });
+    usePlayheadPaint({
+      playerRef, projectId, timelineId, fps: state.fps, total, px, playheadRef,
+      scrollRef, followSuppressedRef, onPlayResumeFollow: resumeFollow, getAudibleItem,
+    });
   // editing mode (Selection V / Blade B / Trim N / Pen P). selection =
   // drag/move; blade = click a clip to cut it there; trim = edge-trim ripples
   // following clips; pen = draw opacity keyframes on the selected clip.
@@ -386,31 +407,128 @@ export function useTimelineController({
   useEffect(() => {
     if (playing || drag || marquee || pickDrag) clearHoverPreviewRef.current();
   }, [playing, drag, marquee, pickDrag]);
+
+  const isEmptyLaneTarget = (target: Element | null) => {
+    if (!target?.closest('[data-timeline-track-lane], .cc-caption-track-lane')) return false;
+    if (target.closest('[data-timeline-clip], .cc-transition-marker, .cc-caption-track-cue, [data-caption-selection-owner]')) {
+      return false;
+    }
+    return true;
+  };
+
+  const startPanGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const element = scrollRef.current;
+    if (!element) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panGestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originScrollLeft: element.scrollLeft,
+      originScrollTop: element.scrollTop,
+    };
+    element.style.cursor = 'grabbing';
+    suppressFollow();
+  };
+
+  const updatePanGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = panGestureRef.current;
+    const element = scrollRef.current;
+    if (!gesture || !element || gesture.pointerId !== event.pointerId) return;
+    element.scrollLeft = gesture.originScrollLeft - (event.clientX - gesture.startX);
+    element.scrollTop = gesture.originScrollTop - (event.clientY - gesture.startY);
+  };
+
+  const finishPanGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = panGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    panGestureRef.current = null;
+    const element = scrollRef.current;
+    if (element) element.style.cursor = '';
+  };
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return !!target.closest('input, textarea, select, [contenteditable="true"]');
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') return;
+      if (event.repeat || isTypingTarget(event.target)) return;
+      spacePanArmedRef.current = true;
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') return;
+      spacePanArmedRef.current = false;
+    };
+    const onBlur = () => { spacePanArmedRef.current = false; };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
   const startSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button === 1 || (event.button === 0 && spacePanArmedRef.current)) {
+      startPanGesture(event);
+      return;
+    }
+    if (event.button !== 0) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (!target?.closest('[data-timeline-track-lane], .cc-caption-track-lane')) return;
+    if (!isEmptyLaneTarget(target)) return;
+    // Additive modifiers are reserved for rubber-band marquee (TrackLane).
+    if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+    const scrubbing = !pickMode;
     seekGestureRef.current = {
       pointerId: event.pointerId,
       button: event.button,
       startX: event.clientX,
       startY: event.clientY,
       dragged: false,
+      scrubbing,
     };
+    if (scrubbing) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.stopPropagation();
+      const frame = frameAtClientX(event.clientX);
+      if (frame !== null) seekPointerFrame(frame);
+    }
   };
   const updateSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (panGestureRef.current?.pointerId === event.pointerId) {
+      updatePanGesture(event);
+      return;
+    }
     const gesture = seekGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || gesture.dragged) return;
-    gesture.dragged = timelineGestureHasDragged(
-      gesture.startX,
-      gesture.startY,
-      event.clientX,
-      event.clientY,
-    );
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture.dragged) {
+      gesture.dragged = timelineGestureHasDragged(
+        gesture.startX,
+        gesture.startY,
+        event.clientX,
+        event.clientY,
+      );
+    }
+    if (gesture.scrubbing) {
+      const frame = frameAtClientX(event.clientX);
+      if (frame !== null) seekPointerFrame(frame);
+    }
   };
   const finishSeekGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (panGestureRef.current?.pointerId === event.pointerId) {
+      finishPanGesture(event);
+      return;
+    }
     const gesture = seekGestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     seekGestureRef.current = null;
+    if (gesture.scrubbing) return;
     if (!timelinePointerShouldSeek(gesture.button, pickMode, gesture.dragged)) return;
     const frame = frameAtClientX(event.clientX);
     if (frame !== null) seekPointerFrame(frame);
@@ -462,7 +580,7 @@ export function useTimelineController({
     frameFromClientX, trackFromClientY, copyCaptionSelections, pasteCaptionClipboard,
     pointer, drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel,
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
-    applyLibraryToClip, applyLibraryToTrack, seekTo,
+    applyLibraryToClip, applyLibraryToTrack, seekTo, fitToView,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
     markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   };

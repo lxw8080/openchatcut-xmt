@@ -57,7 +57,7 @@ export async function submitSubtitleExport(args: SubmitSubtitleExportArgs, state
     if (end <= start) return [];
     let text = readableText(page.words);
     if (captions.bilingual && captions.translation) {
-      const translated = activeTranslation(captions.translation, (start + end) / 2);
+      const translated = activeTranslation(captions.translation, (start + end) / 2, captions.pacing);
       if (translated?.text) text += `\n${translated.text}`;
     }
     return [{ start: start - startMs, end: end - startMs, text }];

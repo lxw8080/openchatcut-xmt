@@ -34,7 +34,7 @@ export function Timeline(props: TimelineProps) {
     state, commands, playerRef, onRecordVoiceover, onReviewItem, onDropExternalFiles,
     selectedCaptions, onSelectCaption, onMarqueeCaptionSelect,
     t, locale, total, empty, trackIds, indexes, innerRef, scrollRef,
-    relinkInputRef, trackInsertInputRef, seekGestureRef,
+    relinkInputRef, trackInsertInputRef,
     hoverPreviewFrame, captionSelectionMovePreview, setCaptionSelectionMovePreview,
     commitTimelineSelectionMove, zoom, setZoom, px, metaOf,
     playheadRef, playheadLineRef, toolbarTimecodeRef, rulerTimecodeRef,
@@ -50,7 +50,7 @@ export function Timeline(props: TimelineProps) {
     frameFromClientX, trackFromClientY, copyCaptionSelections, pasteCaptionClipboard,
     pointer, drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel,
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
-    applyLibraryToClip, applyLibraryToTrack, seekTo,
+    applyLibraryToClip, applyLibraryToTrack, seekTo, fitToView,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
     markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   } = useTimelineController(props);
@@ -99,19 +99,23 @@ export function Timeline(props: TimelineProps) {
         </div>
       )}
 
-      {/* scrollable ruler + tracks (playhead spans both). Ctrl/⌘+wheel = time
-          zoom at cursor, Alt+wheel = track-height zoom (native listener above). */}
+      {/* scrollable ruler + tracks (playhead spans both).
+          Ctrl/⌘+wheel = time zoom at cursor; toolbar/⌘± = zoom at playhead;
+          trackpad horizontal / Shift+wheel = pan time; Alt+wheel = track height;
+          middle-button or Space+drag = pan. */}
       <div ref={scrollRef} style={{ overflow: 'auto', flex: 1, minHeight: 0 }}
         onPointerDownCapture={startSeekGesture}
         onPointerMoveCapture={(event) => { updateSeekGesture(event); updateHoverPreview(event); }}
         onPointerUpCapture={finishSeekGesture}
         onPointerCancelCapture={(event) => {
-          if (seekGestureRef.current?.pointerId === event.pointerId) seekGestureRef.current = null;
+          finishSeekGesture(event);
           clearHoverPreview();
         }}
+        onMouseDown={(event) => { if (event.button === 1) event.preventDefault(); }}
+        onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}
         onPointerLeave={clearHoverPreview}
         onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}
-        title={t('Ctrl/⌘+滚轮 缩放时间轴 · Alt+滚轮 缩放轨道高度')}>
+        title={t('Ctrl/⌘+滚轮 指针处缩放 · 滑块/快捷键以播放头缩放 · 双指横滑平移 · 中键或空格+拖平移 · Alt+滚轮缩放轨道高度')}>
         <div ref={innerRef} style={{ position: 'relative', width: innerW }}>
           {/* ruler (click to seek, hold to scrub; selection mode: click = timepoint, drag = timerange).
 The playhead line/triangle is pointerEvents:none, click it to click the ruler - scrub the same path to take effect.*/}
@@ -119,7 +123,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             state={state} empty={empty} px={px}
             majorFrames={majorFrames} minorFrames={minorFrames} minorTicksPerMajor={minorTicksPerMajor}
             rulerEndFrame={rulerSpanFrames} visibleWindow={visibleWindow}
-            pickMode={pickMode} startPick={startPick} seekTo={seekTo}
+            pickMode={pickMode} startPick={startPick} seekTo={seekTo} onFitToView={fitToView}
             rulerTimecodeRef={rulerTimecodeRef} playheadFrame={playheadRef.current}
             zoneIn={zoneIn} zoneOut={zoneOut} markers={markers} onEditMarker={setEditMarker}
             pinnedMarkerId={editMarker}

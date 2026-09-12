@@ -1,6 +1,7 @@
 // xmt 替换素材面板：右键带 props._xmt 的片段 → 按该文案段现场重跑检索给 Top-10 候选，
 // 选中即换源（保留槽位，matchStatus 标 manual），并按需把候选登记进媒体池。
-import { useEffect, useState } from 'react';
+// 列表左侧常显缩略图；悬停挂载唯一 video，seek 到 start_ms，播到 end_ms 暂停。
+import { useEffect, useRef, useState } from 'react';
 import { theme, themeAlpha } from '../theme';
 import type { EditorCommands } from '../editor/store';
 import type { TimelineItem, TimelineState } from '../editor/types';
@@ -33,6 +34,150 @@ function fmtSeconds(ms: number | null | undefined, t: (s: string) => string): st
   return `${(ms / 1000).toFixed(1)}${t('秒')}`;
 }
 
+function candidateKey(candidate: XmtCandidate, index: number): string {
+  if (candidate.video_segment_id != null) return `vs-${candidate.video_segment_id}`;
+  if (candidate.asset_id != null) return `asset-${candidate.asset_id}-${index}`;
+  return `idx-${index}`;
+}
+
+function releaseVideo(video: HTMLVideoElement): void {
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+}
+
+/** 悬停预览：seek 到分段起点，播到终点暂停；卸载时释放解码器。 */
+function SegmentHoverPreview({
+  streamUrl,
+  posterUrl,
+  startMs,
+  endMs,
+}: {
+  streamUrl: string;
+  posterUrl: string | null;
+  startMs: number | null;
+  endMs: number | null;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    const startSec = typeof startMs === 'number' && Number.isFinite(startMs) && startMs > 0
+      ? startMs / 1000
+      : 0;
+    const endSec = typeof endMs === 'number' && Number.isFinite(endMs) && endMs / 1000 > startSec
+      ? endMs / 1000
+      : null;
+    let seekPending = false;
+
+    const playFromStart = (): void => {
+      void video.play().catch(() => undefined);
+    };
+    const onSeeked = (): void => {
+      seekPending = false;
+      playFromStart();
+    };
+    // 等 seeked 再播，避免 currentTime 异步生效前从片头闪一帧。
+    const seekThenPlay = (): void => {
+      const nearStart = Math.abs(video.currentTime - startSec) < 0.05;
+      if (nearStart && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+        playFromStart();
+        return;
+      }
+      if (seekPending) return;
+      seekPending = true;
+      video.addEventListener('seeked', onSeeked, { once: true });
+      try {
+        video.currentTime = startSec;
+      } catch {
+        seekPending = false;
+        video.removeEventListener('seeked', onSeeked);
+        playFromStart();
+      }
+    };
+    // 缓存命中时 metadata 可能在挂载前已就绪，loadedmetadata 不会再发。
+    const onMeta = (): void => {
+      seekThenPlay();
+    };
+    const onTime = (): void => {
+      if (endSec != null && video.currentTime >= endSec) {
+        video.pause();
+        try {
+          video.currentTime = startSec;
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    video.addEventListener('timeupdate', onTime);
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) onMeta();
+    else video.addEventListener('loadedmetadata', onMeta);
+    return () => {
+      video.removeEventListener('loadedmetadata', onMeta);
+      video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('timeupdate', onTime);
+      releaseVideo(video);
+    };
+  }, [streamUrl, startMs, endMs]);
+
+  return (
+    <video
+      ref={ref}
+      src={streamUrl}
+      poster={posterUrl || undefined}
+      muted
+      playsInline
+      preload="metadata"
+      draggable={false}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+    />
+  );
+}
+
+function CandidateThumb({
+  candidate,
+  active,
+}: {
+  candidate: XmtCandidate;
+  active: boolean;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const poster = candidate.thumb_url && !imgFailed ? candidate.thumb_url : null;
+  const canPlay = active && Boolean(candidate.stream_url);
+
+  return (
+    <div style={{
+      width: 96, height: 54, flexShrink: 0, borderRadius: 3, overflow: 'hidden',
+      border: `0.5px solid ${theme.border}`, background: theme.bg, position: 'relative',
+    }}>
+      {canPlay && candidate.stream_url ? (
+        <SegmentHoverPreview
+          streamUrl={candidate.stream_url}
+          posterUrl={poster}
+          startMs={candidate.start_ms}
+          endMs={candidate.end_ms}
+        />
+      ) : poster ? (
+        <img
+          src={poster}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          onError={() => setImgFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      ) : (
+        <div style={{
+          width: '100%', height: '100%',
+          background: `linear-gradient(135deg, ${theme.border} 0%, ${theme.bg} 100%)`,
+        }} />
+      )}
+    </div>
+  );
+}
+
 export function ReplaceClipDialog({ item, commands, timeline, onClose }: ReplaceClipDialogProps) {
   const t = useT();
   const meta = xmtClipMeta(item);
@@ -41,6 +186,7 @@ export function ReplaceClipDialog({ item, commands, timeline, onClose }: Replace
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [hoveringId, setHoveringId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!meta) return;
@@ -111,37 +257,51 @@ export function ReplaceClipDialog({ item, commands, timeline, onClose }: Replace
     const text = query.trim();
     if (!text || searching) return;
     setSearching(true);
+    setHoveringId(null);
     searchXmtSegments(text)
       .then((list) => { setCandidates(list); setError(null); })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => setSearching(false));
   };
 
-  const row = (candidate: XmtCandidate, index: number) => (
-    <div key={candidate.video_segment_id ?? index} style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-      borderBottom: `0.5px solid ${theme.border}`,
-    }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12.5 }}>
-          {candidate.asset_title || `素材 ${candidate.asset_id ?? ''}`}
+  const row = (candidate: XmtCandidate, index: number) => {
+    const key = candidateKey(candidate, index);
+    return (
+      <div
+        key={key}
+        onPointerEnter={() => {
+          if (candidate.stream_url) setHoveringId(key);
+        }}
+        onPointerLeave={() => {
+          setHoveringId((current) => (current === key ? null : current));
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+          borderBottom: `0.5px solid ${theme.border}`,
+        }}
+      >
+        <CandidateThumb candidate={candidate} active={hoveringId === key} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12.5 }}>
+            {candidate.asset_title || `素材 ${candidate.asset_id ?? ''}`}
+          </div>
+          <div style={{ display: 'flex', gap: 8, fontSize: 11, color: theme.textDim, marginTop: 2 }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+              {candidate.event_summary || t('（无事件摘要）')}
+            </span>
+            {typeof candidate.score === 'number' && (
+              <span>{t('相似度')} {(candidate.score * 100).toFixed(0)}%</span>
+            )}
+            {fmtSeconds(candidate.duration_ms, t) && <span>{fmtSeconds(candidate.duration_ms, t)}</span>}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, fontSize: 11, color: theme.textDim, marginTop: 2 }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
-            {candidate.event_summary || t('（无事件摘要）')}
-          </span>
-          {typeof candidate.score === 'number' && (
-            <span>{t('相似度')} {(candidate.score * 100).toFixed(0)}%</span>
-          )}
-          {fmtSeconds(candidate.duration_ms, t) && <span>{fmtSeconds(candidate.duration_ms, t)}</span>}
-        </div>
+        <button type="button" onClick={() => replace(candidate)} style={{
+          flexShrink: 0, border: `0.5px solid ${theme.accent}`, background: theme.accent,
+          color: theme.onAccent, borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+        }}>{t('替换')}</button>
       </div>
-      <button type="button" onClick={() => replace(candidate)} style={{
-        flexShrink: 0, border: `0.5px solid ${theme.accent}`, background: theme.accent,
-        color: theme.onAccent, borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
-      }}>{t('替换')}</button>
-    </div>
-  );
+    );
+  };
 
   return (
     <div
@@ -152,7 +312,7 @@ export function ReplaceClipDialog({ item, commands, timeline, onClose }: Replace
       }}
     >
       <div style={{
-        width: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+        width: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
         background: theme.panel, border: `0.5px solid ${theme.borderLight}`, borderRadius: 6,
         boxShadow: `0 12px 36px ${themeAlpha.shadow(0.55)}`, overflow: 'hidden',
       }}>

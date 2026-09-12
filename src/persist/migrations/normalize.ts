@@ -13,6 +13,7 @@ import {
   type TimelineState,
 } from '../../editor/types.js';
 import { isBackgroundFillStrength } from '../../editor/backgroundFill.js';
+import { MAX_ITEM_VOLUME, MIN_ITEM_VOLUME } from '../../editor/volumeLimits.js';
 import { isSourceClockMetadata } from '../../editor/timecode.js';
 import { withMediaSourceRevision } from '../../editor/mediaSourceRevision.js';
 import { normalizeSha256Hash } from '../../../shared/content-hash.js';
@@ -146,7 +147,7 @@ export function isTimelineItem(value: unknown): value is TimelineItem {
     && finite(item.durationInFrames) && Number.isInteger(item.durationInFrames) && item.durationInFrames > 0
     && optionalFinite(item.srcInFrame) && (item.srcInFrame === undefined || item.srcInFrame >= 0)
     && optionalFinite(item.playbackRate) && (item.playbackRate === undefined || item.playbackRate > 0)
-    && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= 0 && item.volume <= 2))
+    && optionalFinite(item.volume) && (item.volume === undefined || (item.volume >= MIN_ITEM_VOLUME && item.volume <= MAX_ITEM_VOLUME))
     && (item.backgroundFill === undefined || typeof item.backgroundFill === 'boolean')
     && (item.backgroundFillStrength === undefined || isBackgroundFillStrength(item.backgroundFillStrength))
     && (legacyPreset === undefined || isLegacyBackgroundFillPreset(legacyPreset))

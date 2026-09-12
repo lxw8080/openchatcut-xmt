@@ -7,7 +7,7 @@
 import type { MediaAsset, ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 import { timelineTrackIds, trackKind } from '../editor/types';
 import type { CaptionLayout, CaptionsData } from '../captions/types';
-import { activePage, paginate } from '../captions/types';
+import { activePage, holdModeForPacing, pageVisibleUntil, paginate } from '../captions/types';
 import {
   buildLaneGroups,
   resolveEffectiveCaptionLanes,
@@ -30,7 +30,6 @@ import {
 import { analyzeAssetGeometry, type AnalyzeResult, type VisualGeometryAsset } from './visual-geometry';
 
 const DEFAULT_CAPTION_LAYOUT: CaptionLayoutLike = { anchor: 'bottom-center' };
-const LAST_PAGE_LINGER_MS = 1_500;
 
 /** Caption sets used by geometry-aware QA and the avoidance tool. */
 export type CaptionSet = CaptionsData;
@@ -103,7 +102,10 @@ function multiLaneBoundaries(set: CaptionSet, state: TimelineState, wordsPerPage
     const pages = paginate(words, set.pacing, per);
     for (const page of pages) boundaries.add(page.start);
     const last = pages.at(-1);
-    if (last) boundaries.add(last.end + LAST_PAGE_LINGER_MS);
+    if (last) {
+      const mode = holdModeForPacing(set.pacing);
+      boundaries.add(pageVisibleUntil(last.end, undefined, mode));
+    }
   }
   return [...boundaries].sort((a, b) => a - b);
 }
@@ -142,8 +144,12 @@ function legacyIntervals(set: CaptionSet, state: TimelineState): CaptionPlacemen
   const display = applyWordOverrides(words, indices, set.wordOverrides);
   const pages = paginate(display.words, set.pacing, effectivePreset(set).wordsPerPage, display.breakBefore);
   return pages.flatMap((page, index) => {
-    const endMs = pages[index + 1]?.start ?? page.end + LAST_PAGE_LINGER_MS;
-    if (!activePage(pages, (page.start + endMs) / 2)) return [];
+    const endMs = pageVisibleUntil(
+      page.end,
+      pages[index + 1]?.start,
+      holdModeForPacing(set.pacing),
+    );
+    if (!activePage(pages, (page.start + endMs) / 2, set.pacing)) return [];
     return [{
       startMs: page.start,
       endMs,

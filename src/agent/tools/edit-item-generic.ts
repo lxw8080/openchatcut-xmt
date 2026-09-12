@@ -8,6 +8,7 @@ import { defaultTrackId, resolveTrackId } from '../../editor/types';
 import { isValidEasing } from '../../editor/keyframes';
 import { validateBackgroundFillUpdate } from './edit-item-background-fill';
 import { getKeyframePropertyDefinition, KEYFRAME_PROPS, supportsKeyframeProperty } from '../../editor/keyframeRegistry';
+import { clampItemVolume } from '../../editor/volumeLimits';
 import { planSlip } from '../../editor/slip';
 import { rejectUnknownFields } from './edit-item-fields';
 import { clampNum, parseFiltersArg, parseTransformArg } from './edit-item-visual';
@@ -162,7 +163,7 @@ export function validateGenericUpdate(state: TimelineState, entry: Record<string
   if (finiteNum(entry.durationInFrames) !== undefined) plan.durationInFrames = Math.max(1, Math.round(finiteNum(entry.durationInFrames)!));
   if (finiteNum(entry.srcInFrame) !== undefined) plan.srcInFrame = Math.max(0, Math.round(finiteNum(entry.srcInFrame)!));
   if (entry.props && typeof entry.props === 'object') plan.props = entry.props;
-  if (finiteNum(entry.volume) !== undefined) plan.volume = Math.max(0, Math.min(2, finiteNum(entry.volume)!));
+  if (finiteNum(entry.volume) !== undefined) plan.volume = clampItemVolume(finiteNum(entry.volume)!);
   const fps = state.fps || 30;
   const toFrames = (v: unknown): number | undefined =>
     finiteNum(v) !== undefined ? Math.max(0, Math.round(finiteNum(v)! * fps)) : undefined;

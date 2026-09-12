@@ -5,6 +5,7 @@ import { capFade } from './clipFit';
 import { scaleItemKeyframes, upsertKeyframe } from './keyframes';
 import { timelineFramesToSourceFrames } from './sourceLimit';
 import { coerceKeyframeValue, supportsKeyframeProperty } from './keyframeRegistry';
+import { clampItemVolume } from './volumeLimits';
 import { planSlip } from './slip';
 import { createMediaSourceRevision } from './mediaSourceRevision';
 import { setBackgroundFillState } from './backgroundFill';
@@ -140,7 +141,7 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
       if (lockedItem(s, a.id)) return s;
       return {
         ...s,
-        items: s.items.map((it) => (it.id === a.id ? { ...it, volume: Math.max(0, Math.min(2, a.volume)) } : it)),
+        items: s.items.map((it) => (it.id === a.id ? { ...it, volume: clampItemVolume(a.volume) } : it)),
       };
     case 'setFade':
       if (lockedItem(s, a.id)) return s;

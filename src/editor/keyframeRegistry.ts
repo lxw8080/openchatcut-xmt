@@ -1,5 +1,6 @@
 import { resolveClipScaleAxes, uniformScalePatch } from './clipTransformScale';
 import type { ClipTransform, KeyframeProp, TimelineItem } from './types';
+import { MAX_ITEM_VOLUME, MIN_ITEM_VOLUME } from './volumeLimits';
 
 export interface KeyframePropertyDefinition {
   id: KeyframeProp;
@@ -82,7 +83,7 @@ export const KEYFRAME_PROPERTY_REGISTRY: Record<KeyframeProp, KeyframePropertyDe
     format: (value) => `${compact(value)}px`,
   },
   volume: {
-    id: 'volume', label: '音量', valueRange: [0, 2], editorRange: [0, 2],
+    id: 'volume', label: '音量', valueRange: [MIN_ITEM_VOLUME, MAX_ITEM_VOLUME], editorRange: [MIN_ITEM_VOLUME, MAX_ITEM_VOLUME],
     step: 0.05, defaultValue: 1, supports: audible,
     getBaseValue: (item) => item.volume ?? 1,
     format: (value) => `${compact(value * 100)}%`,

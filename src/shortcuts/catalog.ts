@@ -49,6 +49,7 @@ export const SHORTCUT_CATALOG: ShortcutAction[] = [
   { id: 'paste-effects', label: 'Paste Effects', labelZh: '粘贴效果', group: 'edit', keys: 'Mod + Alt + V / Mod + Shift + B' },
   { id: 'duplicate', label: 'Duplicate', labelZh: '复制片段', group: 'edit', keys: 'Mod + D' },
   { id: 'delete', label: 'Delete', labelZh: '删除', group: 'edit', keys: 'Backspace / Delete' },
+  { id: 'ripple-delete', label: 'Ripple delete', labelZh: '波纹删除', group: 'edit', keys: 'Shift + Backspace' },
   { id: 'split', label: 'Split', labelZh: '切分', group: 'edit', keys: 'C / Enter' },
   { id: 'interaction-mode-selection', label: 'Selection Mode', labelZh: '选择模式', group: 'edit', keys: 'V' },
   { id: 'interaction-mode-trim', label: 'Trim Edit Mode', labelZh: '修剪模式', group: 'edit', keys: 'N' },

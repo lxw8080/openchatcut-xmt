@@ -14,6 +14,7 @@ export interface XmtCandidate {
   score: number | null;
   rank: number | null;
   stream_url: string | null;
+  thumb_url: string | null;
   asset_title: string | null;
   asset_duration_ms: number | null;
   asset_width: number | null;
