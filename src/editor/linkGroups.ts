@@ -110,7 +110,10 @@ export function moveItemWithGroups(
   const moving = state.items
     .filter((item) => ids.has(item.id))
     .map((item) => item.id === id && destinationTrack ? { ...item, track: destinationTrack } : item);
-  const delta = clampMoveDeltaToTrackGaps(state, moving, ids, requestedDelta);
+  const crossTrack = !!destinationTrack && destinationTrack !== target.track;
+  const delta = clampMoveDeltaToTrackGaps(state, moving, ids, requestedDelta, {
+    gapResolve: crossTrack ? 'nearest' : 'directional',
+  });
   if (delta === null) return state;
   const replacements = new Map(moving.map((item) => [
     item.id,

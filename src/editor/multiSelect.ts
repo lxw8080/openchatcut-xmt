@@ -65,7 +65,11 @@ export function clampItemsMoveDelta(
 ): number | null {
   const prepared = prepareItemMove(state, ids, trackShift);
   return prepared
-    ? clampMoveDeltaToTrackGaps(state, prepared.moving, prepared.ids, requestedDelta, bounds)
+    ? clampMoveDeltaToTrackGaps(state, prepared.moving, prepared.ids, requestedDelta, {
+      ...bounds,
+      // Cross-track drops pick the nearest legal gap; same-track keeps directional stick.
+      gapResolve: trackShift ? 'nearest' : 'directional',
+    })
     : null;
 }
 
@@ -86,6 +90,7 @@ export function moveItemsByDelta(
     prepared.moving,
     prepared.ids,
     deltaF,
+    { gapResolve: trackShift ? 'nearest' : 'directional' },
   );
   if (sharedDelta === null) return state;
   const replacements = new Map(prepared.moving.map((item) => [

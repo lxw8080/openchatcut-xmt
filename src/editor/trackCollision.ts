@@ -3,6 +3,14 @@ import type { TimelineItem, TimelineState, TrackId } from './types';
 interface MoveDeltaBounds {
   min?: number;
   max?: number;
+  /**
+   * How to pick a gap when the requested delta lands inside an obstacle.
+   * - `directional` (default): same-track scrub — stick to the near edge in the
+   *   drag direction; never jump past the obstacle midpoint.
+   * - `nearest`: cross-track drop — place in the gap closest to the requested
+   *   frame when the exact target cannot hold the clip.
+   */
+  gapResolve?: 'directional' | 'nearest';
 }
 
 interface DeltaInterval {
@@ -32,6 +40,7 @@ function projectMoveDelta(
   requested: number,
   min: number,
   max: number,
+  gapResolve: 'directional' | 'nearest' = 'directional',
 ): number | null {
   if (min > max) return null;
   const target = Math.min(max, Math.max(min, Math.round(requested)));
@@ -41,11 +50,16 @@ function projectMoveDelta(
   const after = blocked.max + 1;
   const candidates = [before, after].filter((value) => value >= min && value <= max);
   if (!candidates.length) return null;
-  // Prefer the gap closest to the requested drop — used for same-track scrub and
-  // cross-layer placement when the exact target frame cannot hold the clip.
-  return candidates.toSorted(
-    (left, right) => Math.abs(left - target) - Math.abs(right - target) || left - right,
-  )[0]!;
+  if (gapResolve === 'nearest') {
+    return candidates.toSorted(
+      (left, right) => Math.abs(left - target) - Math.abs(right - target) || left - right,
+    )[0]!;
+  }
+  // Directional: prefer the near edge in the drag direction so scrubbing past
+  // an obstacle's midpoint does not teleport to the far side.
+  if (target > 0) return candidates.includes(before) ? before : after;
+  if (target < 0) return candidates.includes(after) ? after : before;
+  return candidates.toSorted((left, right) => Math.abs(left) - Math.abs(right) || right - left)[0]!;
 }
 
 /** Clamp one shared move delta to frame zero and every stationary same-track clip. */
@@ -79,7 +93,13 @@ export function clampMoveDeltaToTrackGaps(
       if (interval.min <= interval.max) intervals.push(interval);
     }
   }
-  return projectMoveDelta(mergeIntervals(intervals), requestedDelta, min, max);
+  return projectMoveDelta(
+    mergeIntervals(intervals),
+    requestedDelta,
+    min,
+    max,
+    bounds.gapResolve ?? 'directional',
+  );
 }
 
 function trackOverlapPairs(items: readonly TimelineItem[]): Set<string> {
