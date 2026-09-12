@@ -55,6 +55,20 @@ function previewProxyEndpoint(): string {
   return DEFAULT_PREVIEW_PROXY_ENDPOINT;
 }
 
+// xmt 时间线的源是素材库直链（/library/api/assets/<id>/stream，见
+// core/video_editing/editor_bridge.stream_url_for_asset），不是上游的本地上传件，
+// 所以 `isPreviewable` 那条 `/media/uploads/` 判据在宿主里恒为 false——「流畅」档
+// 因此曾经一个请求都不发、静默退回原画质（`unavailable` 不进 PreviewPanel 的横幅
+// 统计，连提示都没有）。这里单独给**预览副本**放宽，刻意不复用 `isPreviewable`：
+// 后者还门控着 `/api/media-poster`、`/api/waveform`、`/api/filmstrip` 三个上游
+// server 插件端点，而 xmt 宿主没有实现它们，一起放宽只会换来一批 404。
+// 形状必须与服务端 app/routes/editor.py::_PREVIEW_PROXY_SRC_RE 一致。
+const XMT_LIBRARY_STREAM_RE = /^\/library\/api\/assets\/\d+\/stream(?:[?#]|$)/;
+
+export function isPreviewProxyEligible(src: string | undefined): src is string {
+  return isPreviewable(src) || (!!src && XMT_LIBRARY_STREAM_RE.test(src));
+}
+
 function proxyEntry(src: string): ProxyEntry {
   let entry = proxyEntries.get(src);
   if (!entry) {
@@ -114,12 +128,12 @@ async function loadProxy(src: string, force: boolean, entry: ProxyEntry): Promis
 }
 
 export function requestPreviewProxy(src: string, force = false): Promise<void> {
-  if (!isPreviewable(src)) return Promise.resolve();
+  if (!isPreviewProxyEligible(src)) return Promise.resolve();
   return loadProxy(src, force, proxyEntry(src));
 }
 
 export function reportPreviewPlaybackFailure(src: string, error = 'preview media failed to play'): void {
-  if (!isPreviewable(src)) return;
+  if (!isPreviewProxyEligible(src)) return;
   const entry = proxyEntry(src);
   if (entry.response?.proxy.status !== 'ready') {
     if (entry.response?.proxy.status !== 'failed') void requestPreviewProxy(src, true);
@@ -137,7 +151,7 @@ export function mediaPosterUrl(src: string | undefined): string | undefined {
 }
 
 function stateFor(src: string | undefined, autoRequest: boolean): PreviewProxyState {
-  if (!isPreviewable(src)) return { status: 'unavailable', reason: 'non-local-source' };
+  if (!isPreviewProxyEligible(src)) return { status: 'unavailable', reason: 'non-local-source' };
   const entry = proxyEntry(src);
   if (!entry.response) {
     return autoRequest
@@ -195,6 +209,10 @@ function resolvePreviewSrc(src: string | undefined, proxy: PreviewProxyState): s
 }
 
 export function usePreviewMediaSource(src: string | undefined, enabled = true) {
+  // 素材面板刻意**不**用放宽后的判据：「预览画质」这个开关说的是预览画布的播放，
+  // 而这里一次挂载会为面板里每条视频各发一次 interactive 优先级的副本请求（xmt
+  // 服务端按需转码，A/C 上是真 CPU）。时间线上真正在放的那几条已由
+  // usePreviewProjectDoc 覆盖；面板要不要跟进是另一个决定，需要单独量。
   const source = enabled && isPreviewable(src) ? src : '';
   const sources = useMemo(() => source ? [source] : [], [source]);
   const revision = useProxySources(sources);
@@ -214,7 +232,7 @@ export function usePreviewMediaSource(src: string | undefined, enabled = true) {
 
 export function usePreviewTimelineState(state: TimelineState) {
   const sources = useMemo(() => [...new Set(state.items
-    .filter((item) => item.kind === 'video' && isPreviewable(item.src))
+    .filter((item) => item.kind === 'video' && isPreviewProxyEligible(item.src))
     .map((item) => item.src!))].sort(), [state.items]);
   const revision = useProxySources(sources);
   const previewState = useMemo<TimelineState>(() => {
@@ -244,7 +262,7 @@ export function usePreviewProjectDoc(project: ProjectDoc, timelineId: string) {
   const sources = useMemo(() => [...new Set(project.timelines
     .filter((timeline) => reachable.has(timeline.id))
     .flatMap((timeline) => timeline.items)
-    .filter((item) => item.kind === 'video' && isPreviewable(item.src))
+    .filter((item) => item.kind === 'video' && isPreviewProxyEligible(item.src))
     .map((item) => item.src!))].sort(), [project.timelines, reachable]);
   const revision = useProxySources(sources);
   const previewProject = useMemo<ProjectDoc>(() => {
