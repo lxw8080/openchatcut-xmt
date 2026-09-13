@@ -51,7 +51,12 @@ type BootState =
 
 export default function App() {
   const t = useT();
-  const host = xmtHost();
+  // 宿主契约由外壳在 Vite 入口之前注入、此后不再变，所以挂载时取一次固定住。
+  // `xmtHost()` 每次调用都 normalize 出一个**新对象**，直接当 effect 依赖会自激：
+  // setBoot 触发重渲染 → host 身份变化 → effect 重跑 → 再拉一次工程文档，周期就是
+  // 一次网络往返。线上实测每个编辑器标签页对 GET .../project 打到每分钟约 1000 次
+  // （22 小时约 41 万次），与预览档位无关。
+  const [host] = useState(() => xmtHost());
   const [boot, setBoot] = useState<BootState>({ phase: 'loading' });
 
   useEffect(() => {

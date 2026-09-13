@@ -165,7 +165,10 @@ export const PreviewPanel = memo(function PreviewPanel({
     height: state.height,
   });
   const failedProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'failed');
-  const pendingProxies = preview.proxies.filter(({ proxy }) => proxy.status === 'loading').length;
+  // `loading` 是「请求在飞」，`pending` 是服务端说「正在转码」——横幅要说的都是
+  // 「正在准备流畅预览…」，少算 pending 会让整段转码期间横幅消失。
+  const pendingProxies = preview.proxies
+    .filter(({ proxy }) => proxy.status === 'loading' || proxy.status === 'pending').length;
   const shaderFallbacks = useMemo(
     () => (selectedPreviewStatuses ?? []).filter((status) => status.phase === 'fallback'),
     [selectedPreviewStatuses],
