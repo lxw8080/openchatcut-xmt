@@ -85,7 +85,13 @@ export function InspectorPanel(panel: InspectorPanelProps) {
       >
         <InspectorHeader panel={panel} />
         {!panel.collapsed && (panel.selectedCaption && panel.onCaptionUpdate
-          ? <CaptionInspectorControls selection={panel.selectedCaption} onUpdate={panel.onCaptionUpdate} />
+          // Caption controls must sit inside .cc-insp-body — that is the only
+          // scroll container (flex:1; overflow-y:auto; min-height:0). Rendering
+          // them bare under .cc-inspector (overflow:hidden) clips the lower
+          // controls (shadow, border, transform) with no way to scroll.
+          ? <div className="cc-insp-body">
+              <CaptionInspectorControls selection={panel.selectedCaption} onUpdate={panel.onCaptionUpdate} />
+            </div>
           : item ? <InspectorContent panel={panel} item={item} schema={schema} playheadLocal={playheadLocal} activeTab={activeTab} onTabChange={setActiveTab} />
           : <div className="cc-insp-body"><div className="cc-insp-muted">{t('选中时间线上的片段以编辑属性。')}</div></div>)}
       </section>
