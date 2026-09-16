@@ -91,7 +91,12 @@ export default function App() {
           name: host.projectName || `工程 ${host.jobId}`,
           updatedAt: Date.now(),
         }}
-        onHome={() => {/* xmt 外壳没有工程列表可回 */}}
+        onHome={() => {
+          // 宿主契约 libraryUrl 指向 /video-edit/projects（见 editor/index.html）。
+          // 离开前 flushBeforeLeave 已由 handleHome 跑过；此处只做导航。
+          const target = host.libraryUrl || '/video-edit/projects';
+          window.location.assign(target);
+        }}
         onRename={(name) => {
           void renameXmtProject(name).catch(() => undefined);
         }}
