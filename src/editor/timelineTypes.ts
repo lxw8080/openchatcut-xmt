@@ -153,6 +153,26 @@ export function captionTrackEntries(s: TimelineState): Array<{ id: TrackId; capt
     .map((id) => ({ id, captions: captionsOnTrack(s, id) }));
 }
 
+/** 字幕总开关：屏上文字（字幕层与带文字的片段）此刻是否应当被隐藏。
+ *
+ * **「没表态」不等于「关掉了」。** `captionsHidden` 是工具栏那颗开关，用户没点过就是
+ * `undefined`；此时只让**配置过 captions 的轨道**投票。一条从未配过 captions 的字幕轨
+ * （成片任务关掉字幕时，ProjectDoc 的 C1 就只有轨、没有 captions 块）此前会被
+ * `every(!entry.captions?.enabled)` 读成「字幕被关掉了」——`undefined?.enabled` 求值成
+ * `undefined`、取反即 `true`——于是每个带文字的片段被按成 opacity 0，而工具栏那半边判的是
+ * 「有文字片段就算开」，同一个未表态的标志两处推出相反结论：界面写着「开启」，画面上
+ * 什么都没有，且不报任何错（2026-09-16 XMT 图文卡实测，一次导出丢掉整条 V2 叠层轨）。
+ *
+ * 这条判据是**唯一真源**：合成层（隐藏与否）与工具栏（开关显示成什么）都读它，
+ * 任何一处另写一份默认值，就会重新长出上面那种「显示与画面互相矛盾」。
+ */
+export function captionsHiddenForRender(s: TimelineState): boolean {
+  if (s.captionsHidden === true) return true;
+  if (s.captionsHidden === false) return false;
+  const configured = captionTrackEntries(s).filter((entry) => entry.captions);
+  return configured.length > 0 && configured.every((entry) => !entry.captions!.enabled);
+}
+
 /** total timeline length = last item's end (min 1s). */
 export function timelineDuration(s: TimelineState): number {
   const end = s.items.reduce((m, it) => Math.max(m, it.startFrame + it.durationInFrames), 0);

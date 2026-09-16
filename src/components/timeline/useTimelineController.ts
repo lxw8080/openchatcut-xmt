@@ -4,7 +4,7 @@ import {
 } from 'react';
 import { theme } from '../../theme';
 import {
-  captionTrackEntries, captionsOnTrack, defaultTrackId, selectedIdsOf,
+  captionsHiddenForRender, captionsOnTrack, defaultTrackId, selectedIdsOf,
   timelineTrackIds, trackAlias, trackKind, type TimelineItem, type TrackId,
 } from '../../editor/types';
 import { slipPreview as buildSlipPreview } from '../../editor/slip';
@@ -152,12 +152,9 @@ export function useTimelineController({
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
   // magnetic snapping (Snapping toggle, S). On = edges lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
-  const textClipCount = state.items.filter((item) => item.kind === 'text' || item.kind === 'motion-graphic').length;
-  const captionsVisible = state.captionsHidden === true
-    ? false
-    : state.captionsHidden === false
-      ? true
-      : captionTrackEntries(state).some((entry) => entry.captions?.enabled) || textClipCount > 0;
+  // 与合成层同一份判据（timelineTypes.ts）：这颗开关显示成什么，必须就是画面上文字有没有
+  // 被隐藏。两边各补一套默认值，就会出现「写着开启、画面却空着」。
+  const captionsVisible = !captionsHiddenForRender(state);
   const {
     captionMenu, setCaptionMenu, trackMenu, setTrackMenu, transitionMenu, setTransitionMenu,
     captionError, setCaptionError, duckMenu, setDuckMenu,

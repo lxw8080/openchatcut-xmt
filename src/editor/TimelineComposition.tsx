@@ -5,7 +5,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
 import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
-import { captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import { captionsHiddenForRender, captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
 import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
 import { sourceFrameAt } from './sourceLimit';
@@ -306,8 +306,9 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const ea = extendAfter.get(item.id) ?? 0;
         const entrance = entranceOf.get(item.id);
         // Captions off hides on-screen text clips too (render-layer only).
-        const captionsOff = state.captionsHidden === true
-          || (state.captionsHidden === undefined && captionEntries.length > 0 && captionEntries.every((entry) => !entry.captions?.enabled));
+        // 判据只有 captionsHiddenForRender 一份（见 timelineTypes.ts）——此处曾自己补
+        // 默认值，把「这条字幕轨从未配过 captions」读成「字幕被关掉了」。
+        const captionsOff = captionsHiddenForRender(state);
         const hiddenByCaptions = captionsOff && previewTextEditFields(item) !== null;
         const fillBackground = isBackgroundFillActive(state, item);
         const foreground = (
