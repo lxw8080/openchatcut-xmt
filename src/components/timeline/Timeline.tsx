@@ -286,20 +286,25 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
               zIndex: 30,
             }}
           >
-            <div
-              className="cc-playhead-hit"
-              style={{ pointerEvents: pickMode ? 'none' : 'auto' }}
-              onPointerDown={(e) => {
-                if (pickMode || e.button !== 0) return;
-                e.stopPropagation();
-                e.currentTarget.setPointerCapture(e.pointerId);
-                seekTo(e.clientX);
-              }}
-              onPointerMove={(e) => {
-                if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX);
-              }}
-            />
-            <div className="cc-playhead-handle" style={{ transform: 'translateX(-8px)', width: 17, height: 14, clipPath: 'polygon(0 0, 100% 0, 50% 100%)' }} />
+            {/* Sticky zero-height shell so hit pad + triangle stack at ruler
+                top instead of stacking in normal flow (hit was pushing the
+                triangle ~22px down into the middle of the 28px ruler). */}
+            <div className="cc-playhead-cap">
+              <div
+                className="cc-playhead-hit"
+                style={{ pointerEvents: pickMode ? 'none' : 'auto' }}
+                onPointerDown={(e) => {
+                  if (pickMode || e.button !== 0) return;
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  seekTo(e.clientX);
+                }}
+                onPointerMove={(e) => {
+                  if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX);
+                }}
+              />
+              <div className="cc-playhead-handle" />
+            </div>
           </div>
         </div>
       </div>
