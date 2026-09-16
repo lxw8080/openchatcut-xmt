@@ -10,17 +10,11 @@ import { showAppToast } from '../ui/appToast';
 import { fetchXmtCandidates, searchXmtSegments, type XmtCandidate } from './projectBridge';
 
 /** V1 片段携带的来源信息（editor_bridge.plan_to_project_doc 写入）。 */
-export interface XmtClipMeta {
-  scriptSegmentId: string;
-  matchStatus?: string;
-  assetId?: number | null;
-}
+// 定义搬到 ./clipMeta（合成层也要读，见那里的说明）；此处保留同名再导出，既有 import 不变。
+import { xmtClipMeta } from './clipMeta';
 
-export function xmtClipMeta(item: TimelineItem): XmtClipMeta | null {
-  const meta = (item.props as { _xmt?: XmtClipMeta } | undefined)?._xmt;
-  if (!meta || typeof meta.scriptSegmentId !== 'string' || !meta.scriptSegmentId) return null;
-  return meta;
-}
+export type { XmtClipMeta } from './clipMeta';
+export { xmtClipMeta };
 
 interface ReplaceClipDialogProps {
   item: TimelineItem;

@@ -7,6 +7,7 @@ import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPrevie
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
 import { captionsHiddenForRender, captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
+import { isXmtGraphicCard } from '../xmt/clipMeta';
 import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
 import { sourceFrameAt } from './sourceLimit';
 import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type SequenceGraphLimits } from './sequenceGraph';
@@ -309,7 +310,11 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         // 判据只有 captionsHiddenForRender 一份（见 timelineTypes.ts）——此处曾自己补
         // 默认值，把「这条字幕轨从未配过 captions」读成「字幕被关掉了」。
         const captionsOff = captionsHiddenForRender(state);
-        const hiddenByCaptions = captionsOff && previewTextEditFields(item) !== null;
+        // 图文卡是画面内容不是字幕：关字幕是不想要逐句念白的字幕条，不是不想要记分牌。
+        // 其余屏上文字片段仍跟随该开关（fork 既有策略）。
+        const hiddenByCaptions = captionsOff
+          && !isXmtGraphicCard(item)
+          && previewTextEditFields(item) !== null;
         const fillBackground = isBackgroundFillActive(state, item);
         const foreground = (
           <ClipWrapper item={item} frameOffset={-eb} hiddenByCaptions={hiddenByCaptions}>
