@@ -368,6 +368,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
         return id;
       },
       updateTrack: (track, patch) => dispatch({ type: 'track.update', track, patch }),
+      moveTrack: (track, dir) => dispatch({ type: 'track.move', track, dir }),
       deleteTracks: (tracks) => dispatch({ type: 'track.delete', tracks }),
       tightenTrack: (track) => dispatch({ type: 'track.tighten', track }),
       setCaptions: (captions, track) => {

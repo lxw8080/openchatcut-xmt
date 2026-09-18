@@ -143,6 +143,8 @@ export default {
   '轨道已静音': 'Track muted',
   '解锁轨道': 'Unlock track',
   '重命名轨道': 'Rename track',
+  '上移轨道': 'Move track up',
+  '下移轨道': 'Move track down',
   '轨道名称（留空恢复默认）': 'Track name (leave empty to reset to default)',
   '音乐': 'Music',
   '锁定轨道（禁止移动 / 裁剪 / 删除 / 落轨）': 'Lock track (no moving / trimming / deleting / dropping)',

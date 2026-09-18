@@ -9,6 +9,7 @@ export function trackContextMenuLabels(kind: TrackKind): string[] {
     insert, '闭合缝隙', '全选', '清空', '隐藏轨道',
     ...(kind === 'caption' ? [] : ['静音轨道']),
     '锁定轨道',
+    '上移轨道', '下移轨道',
     ...(kind === 'caption' ? ['字幕样式', '翻译全部'] : ['自动闪避']),
     '删除轨道',
   ];

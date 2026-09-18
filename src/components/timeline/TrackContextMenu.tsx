@@ -14,6 +14,8 @@ interface TrackContextMenuProps {
   canTighten: boolean;
   hasContents: boolean;
   hasSelectable: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   deleteBlockedReason: TrackDeletePlan['blockedReason'];
   onInsert: () => void;
   onTighten: () => void;
@@ -23,6 +25,8 @@ interface TrackContextMenuProps {
   onToggleMuted: () => void;
   onToggleLocked: () => void;
   onRename: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onOpenDuck: (rect: DOMRect) => void;
   onOpenCaptionStyle: (rect: DOMRect) => void;
   onOpenTranslate: (rect: DOMRect) => void;
@@ -65,9 +69,9 @@ function insertMenuItem(kind: TrackKind, t: (text: string) => string): { label: 
 }
 
 export function TrackContextMenu({
-  kind, x, y, hidden, muted, locked, canTighten, hasContents, hasSelectable, deleteBlockedReason,
+  kind, x, y, hidden, muted, locked, canTighten, hasContents, hasSelectable, canMoveUp, canMoveDown, deleteBlockedReason,
   onInsert, onTighten, onSelectAll, onClear, onToggleHidden, onToggleMuted, onToggleLocked,
-  onRename, onOpenDuck, onOpenCaptionStyle, onOpenTranslate, onDelete, onClose,
+  onRename, onMoveUp, onMoveDown, onOpenDuck, onOpenCaptionStyle, onOpenTranslate, onDelete, onClose,
 }: TrackContextMenuProps) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
@@ -121,6 +125,9 @@ export function TrackContextMenu({
       {kind !== 'caption' && <MenuItem label={t(muted ? '取消静音' : '静音轨道')} icon={muted ? 'volumeOff' : 'volume'} checked={muted} onClick={run(onToggleMuted)} />}
       <MenuItem label={t(locked ? '解锁轨道' : '锁定轨道')} icon={locked ? 'lock' : 'unlock'} checked={locked} onClick={run(onToggleLocked)} />
       <MenuItem label={t('重命名轨道')} icon="pencil" onClick={run(onRename)} />
+      <Separator />
+      <MenuItem label={t('上移轨道')} icon="arrowUp" disabled={!canMoveUp} onClick={run(onMoveUp)} />
+      <MenuItem label={t('下移轨道')} icon="arrowDown" disabled={!canMoveDown} onClick={run(onMoveDown)} />
       <Separator />
       {kind === 'caption' ? (
         <>

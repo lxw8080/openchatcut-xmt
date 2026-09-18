@@ -132,6 +132,8 @@ export interface EditorCommands {
   createTrack: (kind: TrackKind, opts?: { name?: string; role?: TrackFlags['role']; order?: number; audioRouting?: TrackFlags['audioRouting'] }) => TrackId;
   createCaptionTrack: (captions: CaptionsData, opts?: { name?: string; order?: number }) => TrackId;
   updateTrack: (track: TrackId, patch: TrackUpdate) => void;
+  /** Move a track one slot up (-1) or down (+1) in the full trackOrder. */
+  moveTrack: (track: TrackId, dir: -1 | 1) => void;
   deleteTracks: (tracks: TrackId[]) => void;
   tightenTrack: (track: TrackId) => void;
   setCaptions: (captions: CaptionsData | null, track?: TrackId) => void;

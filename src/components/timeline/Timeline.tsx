@@ -388,6 +388,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
         const clearPlan = trackClearPlan(state, trackId);
         const deletePlan = trackDeletePlan(state, trackId);
         const hidden = kind === 'caption' ? !captions?.enabled : !!config.hidden;
+        const trackIndex = trackIds.indexOf(trackId);
         return (
           <TrackContextMenu
             kind={kind}
@@ -399,6 +400,8 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             canTighten={canTighten}
             hasContents={clearPlan.hasContents}
             hasSelectable={kind === 'caption' ? captionSelections.length > 0 : items.length > 0}
+            canMoveUp={trackIndex > 0}
+            canMoveDown={trackIndex >= 0 && trackIndex < trackIds.length - 1}
             deleteBlockedReason={deletePlan.blockedReason}
             onInsert={() => beginTrackInsert(trackId, trackMenu.frame)}
             onTighten={() => {
@@ -432,6 +435,8 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
               if (next === null) return;
               commands.updateTrack(trackId, { name: next.trim() ? next.trim() : undefined });
             }}
+            onMoveUp={() => commands.moveTrack(trackId, -1)}
+            onMoveDown={() => commands.moveTrack(trackId, 1)}
             onOpenDuck={(rect) => openDuckTrackMenu(trackId, rect, trackMenu, true)}
             onOpenCaptionStyle={(rect) => openCaptionTrackMenu(trackId, rect, false, trackMenu, true)}
             onOpenTranslate={(rect) => openCaptionTrackMenu(trackId, rect, true, trackMenu, true)}

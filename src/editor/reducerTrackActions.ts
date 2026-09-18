@@ -2,7 +2,7 @@ import type { TimelineItem, TimelineState, TrackFlags, TransitionItem } from './
 import { captionTrackEntries, captionsOnTrack, DEFAULT_WATERMARK, defaultTrackId, isAudioTransition, timelineTrackIds, trackEnd, trackKind } from './types';
 import { reconcileTimelineCaptionReferences } from '../captions/reconcileSources.js';
 import type { Action } from './reducerActions';
-import { placeTrack, withTrackCaptions } from './reducerTimelineHelpers';
+import { moveTrackInOrder, placeTrack, withTrackCaptions } from './reducerTimelineHelpers';
 
 export function applyTrackAction(
   s: TimelineState,
@@ -139,6 +139,19 @@ export function applyTrackAction(
       return captionHidden === undefined || !trackCaptions
         ? nextState
         : withTrackCaptions(nextState, { ...trackCaptions, enabled: !captionHidden }, a.track);
+    }
+    case 'track.move': {
+      const prev = timelineTrackIds(s);
+      if (!prev.includes(a.track)) return s;
+      const trackOrder = moveTrackInOrder(s, a.track, a.dir);
+      if (trackOrder.every((id, i) => id === prev[i])) return s;
+      const isCaption = trackKind(s, a.track) === 'caption';
+      let nextState = { ...s, trackOrder };
+      if (isCaption) {
+        const primary = defaultTrackId(nextState, 'caption');
+        nextState = { ...nextState, captions: primary ? captionsOnTrack(nextState, primary) : null };
+      }
+      return nextState;
     }
     case 'track.delete': {
       const remove = new Set(a.tracks);

@@ -6,17 +6,59 @@ import { hasOperationalTranscript } from '../transcript/types';
 import type { CaptionsData } from '../captions/types';
 import type { Action } from './reducerActions';
 
-const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
+/** Default slot when no same-kind peers exist — keeps XMT's caption-at-bottom layout. */
+function defaultInsertIndex(ids: TrackId[], s: TimelineState, kind: TrackKind): number {
+  if (kind === 'caption') return ids.length;
+  if (kind === 'video') {
+    const i = ids.findIndex((id) => {
+      const peer = trackKind(s, id);
+      return peer === 'audio' || peer === 'caption';
+    });
+    return i < 0 ? ids.length : i;
+  }
+  const firstCaption = ids.findIndex((id) => trackKind(s, id) === 'caption');
+  if (firstCaption >= 0) return firstCaption;
+  let afterVideo = -1;
+  for (let i = 0; i < ids.length; i++) {
+    if (trackKind(s, ids[i]!) === 'video') afterVideo = i;
+  }
+  return afterVideo + 1;
+}
 
+/**
+ * Insert/move a track by kind-relative `order` without regrouping other kinds.
+ * Video order is inverted (larger → closer to timeline top); audio/caption grow downward.
+ * Preserves existing relative positions of every other track (fixes caption jump-to-top on create).
+ */
 export function placeTrack(s: TimelineState, track: TrackId, kind: TrackKind, order?: number): TrackId[] {
-  const groups = Object.fromEntries(TRACK_KIND_ORDER.map((entry) => [
-    entry,
-    timelineTrackIds(s).filter((id) => id !== track && trackKind(s, id) === entry),
-  ])) as Record<TrackKind, TrackId[]>;
-  const lane = groups[kind];
-  const sourceOrder = Math.max(0, Math.min(order ?? lane.length, lane.length));
-  lane.splice(kind === 'video' ? lane.length - sourceOrder : sourceOrder, 0, track);
-  return TRACK_KIND_ORDER.flatMap((entry) => groups[entry]);
+  const ids = timelineTrackIds(s).filter((id) => id !== track);
+  const sameKind = ids.filter((id) => trackKind(s, id) === kind);
+  let insertAt: number;
+  if (!sameKind.length) {
+    insertAt = defaultInsertIndex(ids, s, kind);
+  } else {
+    const laneLen = sameKind.length;
+    const sourceOrder = Math.max(0, Math.min(order ?? laneLen, laneLen));
+    const posAmongKind = kind === 'video' ? laneLen - sourceOrder : sourceOrder;
+    if (posAmongKind <= 0) insertAt = ids.indexOf(sameKind[0]!);
+    else if (posAmongKind >= laneLen) insertAt = ids.indexOf(sameKind[laneLen - 1]!) + 1;
+    else insertAt = ids.indexOf(sameKind[posAmongKind]!);
+  }
+  const next = [...ids];
+  next.splice(insertAt, 0, track);
+  return next;
+}
+
+/** Swap a track one slot in the full trackOrder (cross-kind layer reorder). */
+export function moveTrackInOrder(s: TimelineState, track: TrackId, dir: -1 | 1): TrackId[] {
+  const ids = [...timelineTrackIds(s)];
+  const i = ids.indexOf(track);
+  if (i < 0) return ids;
+  const j = i + dir;
+  if (j < 0 || j >= ids.length) return ids;
+  ids.splice(i, 1);
+  ids.splice(j, 0, track);
+  return ids;
 }
 
 export function withTrackCaptions(s: TimelineState, captions: CaptionsData | null, track?: TrackId): TimelineState {
