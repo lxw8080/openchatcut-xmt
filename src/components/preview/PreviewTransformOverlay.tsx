@@ -56,6 +56,8 @@ interface GestureState {
   /** Crop snapshot at pointer-down (edge crop keeps the opposite side fixed). */
   startCrop?: ClipCrop;
   startUi: PreviewPoint;
+  /** Latest pointer position in overlay UI space (for Shift keyup/keydown without move). */
+  lastUi: PreviewPoint;
   startComposition: PreviewPoint;
   center: PreviewPoint;
   previewSize: PreviewSize;
@@ -218,6 +220,16 @@ export function PreviewTransformOverlay({
     onEndHistoryGesture();
   }, [commitPending, onEndHistoryGesture]);
 
+  const applyMoveGesture = useCallback((gesture: GestureState, shiftKey: boolean) => {
+    const delta = {
+      x: gesture.lastUi.x - gesture.startUi.x,
+      y: gesture.lastUi.y - gesture.startUi.y,
+    };
+    const locked = constrainMoveDeltaToAxis(delta, shiftKey);
+    const moved = movePreviewTransform(gesture.transform, locked, gesture.previewSize);
+    queueValues({ item: gesture.item, localFrame: gesture.localFrame, values: moved });
+  }, [queueValues]);
+
   useEffect(() => () => {
     if (commitRafRef.current) cancelAnimationFrame(commitRafRef.current);
     if (gestureRef.current) endHistoryRef.current();
@@ -235,6 +247,23 @@ export function PreviewTransformOverlay({
     }
   }, [finishGesture, state.items, state.selectedId, state.tracks]);
 
+  // Shift may change while the pointer is still — re-apply move from lastUi immediately.
+  useEffect(() => {
+    const onShift = (event: KeyboardEvent) => {
+      if (event.key !== 'Shift') return;
+      const gesture = gestureRef.current;
+      if (!gesture || gesture.mode !== 'move' || !gesture.moved) return;
+      // Prefer shiftKey over event.type so Left/Right Shift don't unlock early.
+      applyMoveGesture(gesture, event.shiftKey);
+    };
+    window.addEventListener('keydown', onShift);
+    window.addEventListener('keyup', onShift);
+    return () => {
+      window.removeEventListener('keydown', onShift);
+      window.removeEventListener('keyup', onShift);
+    };
+  }, [applyMoveGesture]);
+
   const updateGesture = useCallback((event: ReactPointerEvent) => {
     const gesture = gestureRef.current;
     const root = rootRef.current;
@@ -242,14 +271,13 @@ export function PreviewTransformOverlay({
     const rect = root.getBoundingClientRect();
     const currentUi = uiPoint(event, rect);
     const currentComposition = compositionPoint(currentUi, rect, state);
+    gesture.lastUi = currentUi;
     const delta = { x: currentUi.x - gesture.startUi.x, y: currentUi.y - gesture.startUi.y };
     if (!gesture.moved && Math.hypot(delta.x, delta.y) >= DRAG_THRESHOLD) gesture.moved = true;
     if (!gesture.moved) return;
 
     if (gesture.mode === 'move') {
-      const locked = constrainMoveDeltaToAxis(delta, event.shiftKey);
-      const moved = movePreviewTransform(gesture.transform, locked, gesture.previewSize);
-      queueValues({ item: gesture.item, localFrame: gesture.localFrame, values: moved });
+      applyMoveGesture(gesture, event.shiftKey);
     } else if (gesture.mode === 'scale') {
       queueValues({
         item: gesture.item,
@@ -290,7 +318,7 @@ export function PreviewTransformOverlay({
         },
       });
     }
-  }, [queueValues, state]);
+  }, [applyMoveGesture, queueValues, state]);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || gestureRef.current) return;
@@ -336,6 +364,7 @@ export function PreviewTransformOverlay({
       edge,
       startCrop: candidate.item.transform?.crop,
       startUi: pointUi,
+      lastUi: pointUi,
       startComposition: pointComposition,
       center: geometry.center,
       previewSize: { width: rect.width, height: rect.height },

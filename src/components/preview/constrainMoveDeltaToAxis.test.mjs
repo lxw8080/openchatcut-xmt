@@ -22,4 +22,9 @@ describe('constrainMoveDeltaToAxis', () => {
   it('handles zero delta with Shift', () => {
     assert.deepEqual(constrainMoveDeltaToAxis({ x: 0, y: 0 }, true), { x: 0, y: 0 });
   });
+
+  it('returns the same object when Shift is off', () => {
+    const delta = { x: 1, y: 2 };
+    assert.equal(constrainMoveDeltaToAxis(delta, false), delta);
+  });
 });
