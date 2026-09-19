@@ -23,6 +23,8 @@ interface TimelineRulerProps {
   pickMode: boolean;
   startPick: (e: React.PointerEvent, origin: TimelinePickDrag['origin']) => void;
   seekTo: (clientX: number) => void;
+  /** Clear sticky playhead snap state when the scrub gesture ends. */
+  onSeekEnd?: () => void;
   onFitToView?: () => void;
   rulerTimecodeRef: RefObject<HTMLSpanElement | null>;
   playheadFrame: number;
@@ -35,7 +37,7 @@ interface TimelineRulerProps {
 
 export function TimelineRuler({
   state, empty, px, majorFrames, minorFrames, minorTicksPerMajor, rulerEndFrame, visibleWindow,
-  pickMode, startPick, seekTo, onFitToView, rulerTimecodeRef, playheadFrame, zoneIn, zoneOut,
+  pickMode, startPick, seekTo, onSeekEnd, onFitToView, rulerTimecodeRef, playheadFrame, zoneIn, zoneOut,
   markers, onEditMarker, pinnedMarkerId,
 }: TimelineRulerProps) {
   const t = useT();
@@ -59,7 +61,8 @@ export function TimelineRuler({
         seekTo(e.clientX);
       }}
       onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX); }}
-      onPointerUp={(e) => { e.currentTarget.style.cursor = ''; }}
+      onPointerUp={(e) => { e.currentTarget.style.cursor = ''; onSeekEnd?.(); }}
+      onPointerCancel={() => onSeekEnd?.()}
       onDoubleClick={(e) => {
         if (pickMode) return;
         const target = e.target instanceof Element ? e.target : null;

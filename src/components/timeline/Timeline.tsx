@@ -50,7 +50,7 @@ export function Timeline(props: TimelineProps) {
     frameFromClientX, trackFromClientY, copyCaptionSelections, pasteCaptionClipboard,
     pointer, drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel,
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
-    applyLibraryToClip, applyLibraryToTrack, seekTo, fitToView,
+    applyLibraryToClip, applyLibraryToTrack, seekTo, endSeekSnap, seekSnapAt, fitToView,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
     markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   } = useTimelineController(props);
@@ -123,7 +123,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             state={state} empty={empty} px={px}
             majorFrames={majorFrames} minorFrames={minorFrames} minorTicksPerMajor={minorTicksPerMajor}
             rulerEndFrame={rulerSpanFrames} visibleWindow={visibleWindow}
-            pickMode={pickMode} startPick={startPick} seekTo={seekTo} onFitToView={fitToView}
+            pickMode={pickMode} startPick={startPick} seekTo={seekTo} onSeekEnd={endSeekSnap} onFitToView={fitToView}
             rulerTimecodeRef={rulerTimecodeRef} playheadFrame={playheadRef.current}
             zoneIn={zoneIn} zoneOut={zoneOut} markers={markers} onEditMarker={setEditMarker}
             pinnedMarkerId={editMarker}
@@ -247,9 +247,9 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             );
           })}
 
-          {/* snap guide — appears while a drag edge is locked onto a target */}
-          {drag && drag.snapAt !== null && (
-            <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + drag.snapAt * px, height: RULER_H + tracksHeight }} />
+          {/* snap guide — appears while a drag edge or playhead scrub locks onto a target */}
+          {((drag && drag.snapAt !== null) || seekSnapAt !== null) && (
+            <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + (drag?.snapAt ?? seekSnapAt!) * px, height: RULER_H + tracksHeight }} />
           )}
 
           {hoverPreviewFrame !== null && (
@@ -302,6 +302,8 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                 onPointerMove={(e) => {
                   if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX);
                 }}
+                onPointerUp={() => endSeekSnap()}
+                onPointerCancel={() => endSeekSnap()}
               />
               <div className="cc-playhead-handle" />
             </div>

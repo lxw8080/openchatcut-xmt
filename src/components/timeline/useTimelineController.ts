@@ -35,7 +35,11 @@ import {
 } from './timelineSeek';
 import { isTimelineDragOverChat } from './timelineChatDrop';
 import {
-  HEADER_W, MAX_ROW, MIN_ROW, RULER_H, TRACK_ROW, buildTimelineIndexes,
+  collectTimelineSnapPoints, snapPlayheadFrame, sortTimelineSnapPoints,
+  type SnapFrameHold, type SnapPoint,
+} from '../../editor/snap';
+import {
+  HEADER_W, MAX_ROW, MIN_ROW, RULER_H, SNAP_PX, TRACK_ROW, buildTimelineIndexes,
   rulerMajorSeconds, rulerMinorCount, timelineFrameWindow, timelinePinnedItemIds,
   type EditMode,
 } from './timelineUtil';
@@ -75,6 +79,10 @@ export function useTimelineController({
     /** Continuous scrub on empty lane (CapCut-style). */
     scrubbing: boolean;
   } | null>(null);
+  /** Snap targets for one continuous playhead scrub; rebuilt when the gesture ends. */
+  const seekSnapPointsRef = useRef<SnapPoint[] | null>(null);
+  const seekSnapHoldRef = useRef<SnapFrameHold | null>(null);
+  const [seekSnapAt, setSeekSnapAt] = useState<number | null>(null);
   const panGestureRef = useRef<{
     pointerId: number;
     startX: number;
@@ -150,7 +158,7 @@ export function useTimelineController({
   const [editMode, setEditMode] = usePersistedState<EditMode>('cc.editMode', 'selection');
   // insert = push later clips when dropping library media; overwrite = place without shift
   const [placeMode, setPlaceMode] = usePersistedState<'insert' | 'overwrite'>('cc.placeMode', 'overwrite');
-  // magnetic snapping (Snapping toggle, S). On = edges lock to guides.
+  // magnetic snapping (Snapping toggle, S). On = clip edges and playhead scrub lock to guides.
   const [snapping, setSnapping] = usePersistedState('cc.snapping', true);
   // 与合成层同一份判据（timelineTypes.ts）：这颗开关显示成什么，必须就是画面上文字有没有
   // 被隐藏。两边各补一套默认值，就会出现「写着开启、画面却空着」。
@@ -355,9 +363,39 @@ export function useTimelineController({
     state, commands, liveStateRef, onDropExternalFiles, placeMode, t,
   });
 
+  const endSeekSnap = () => {
+    seekSnapPointsRef.current = null;
+    seekSnapHoldRef.current = null;
+    setSeekSnapAt(null);
+  };
+
   const seekPointerFrame = (frame: number) => {
-    const clamped = Math.max(0, Math.min(frame, total - 1));
-    seekTimelineFromPointer(playerRef.current, clamped, paintPlayhead);
+    let target = Math.max(0, Math.min(frame, total - 1));
+    let snapAt: number | null = null;
+    if (snapping && total > 0) {
+      if (!seekSnapPointsRef.current) {
+        // Omit playheadFrame so the scrubber never snaps to itself.
+        seekSnapPointsRef.current = sortTimelineSnapPoints(
+          collectTimelineSnapPoints(liveStateRef.current, {}),
+        );
+      }
+      const result = snapPlayheadFrame({
+        frame: target,
+        points: seekSnapPointsRef.current,
+        thresholdFrames: SNAP_PX / px,
+        hold: seekSnapHoldRef.current,
+      });
+      seekSnapHoldRef.current = result.hold;
+      target = Math.max(0, Math.min(result.frame, total - 1));
+      snapAt = result.snapAt === null
+        ? null
+        : Math.max(0, Math.min(result.snapAt, total - 1));
+    } else {
+      seekSnapHoldRef.current = null;
+      seekSnapPointsRef.current = null;
+    }
+    setSeekSnapAt((prev) => (prev === snapAt ? prev : snapAt));
+    seekTimelineFromPointer(playerRef.current, target, paintPlayhead);
   };
 
   const seekTo = (clientX: number) => {
@@ -525,10 +563,14 @@ export function useTimelineController({
     const gesture = seekGestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     seekGestureRef.current = null;
-    if (gesture.scrubbing) return;
+    if (gesture.scrubbing) {
+      endSeekSnap();
+      return;
+    }
     if (!timelinePointerShouldSeek(gesture.button, pickMode, gesture.dragged)) return;
     const frame = frameAtClientX(event.clientX);
     if (frame !== null) seekPointerFrame(frame);
+    endSeekSnap();
   };
   useEffect(() => () => onHoverPreviewFrameChange?.(null), [onHoverPreviewFrameChange]);
 
@@ -577,7 +619,7 @@ export function useTimelineController({
     frameFromClientX, trackFromClientY, copyCaptionSelections, pasteCaptionClipboard,
     pointer, drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel,
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
-    applyLibraryToClip, applyLibraryToTrack, seekTo, fitToView,
+    applyLibraryToClip, applyLibraryToTrack, seekTo, endSeekSnap, seekSnapAt, fitToView,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
     markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   };

@@ -182,6 +182,38 @@ function hasSnapFrame(points: SnapPoint[], frame: number, dynamicPlayheadFrame?:
   return points[firstSnapAtOrAfter(points, frame)]?.frame === frame;
 }
 
+/** Sticky target while scrubbing the playhead (no edge — the playhead itself is the probe). */
+export interface SnapFrameHold {
+  frame: number;
+  type: SnapPointType;
+}
+
+/**
+ * Snap a playhead scrub frame to the nearest timeline guide.
+ * Callers must omit the live playhead from `points` (pass no `playheadFrame`
+ * to `collectTimelineSnapPoints`) so the playhead never snaps to itself.
+ */
+export function snapPlayheadFrame(options: {
+  frame: number;
+  points: SnapPoint[];
+  thresholdFrames: number;
+  hold?: SnapFrameHold | null;
+}): { frame: number; snapAt: number | null; hold: SnapFrameHold | null } {
+  const { frame, points, thresholdFrames, hold } = options;
+  if (hold && hasSnapFrame(points, hold.frame)) {
+    if (Math.abs(frame - hold.frame) <= radiusFor(hold.type, thresholdFrames) * STICKY_RELEASE) {
+      return { frame: hold.frame, snapAt: hold.frame, hold };
+    }
+  }
+  const point = findClosestSnapPoint(points, frame, thresholdFrames);
+  if (!point) return { frame, snapAt: null, hold: null };
+  return {
+    frame: point.frame,
+    snapAt: point.frame,
+    hold: { frame: point.frame, type: point.type },
+  };
+}
+
 export function snapDraggedEdges(options: SnapDraggedEdgesOptions): {
   deltaF: number;
   snapAt: number | null;
