@@ -258,6 +258,8 @@ export function cyclePreviewCandidate(
   };
 }
 
+export { constrainMoveDeltaToAxis } from './constrainMoveDeltaToAxis';
+
 export function movePreviewTransform(
   start: EffectivePreviewTransform,
   deltaPreview: PreviewPoint,

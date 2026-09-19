@@ -11,6 +11,7 @@ import type { PlayerRef } from '@remotion/player';
 import type { ClipCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
 import { t } from '../../i18n/locale';
 import {
+  constrainMoveDeltaToAxis,
   cyclePreviewCandidate,
   edgeCropPreviewTransform,
   hitPreviewCandidates,
@@ -246,7 +247,8 @@ export function PreviewTransformOverlay({
     if (!gesture.moved) return;
 
     if (gesture.mode === 'move') {
-      const moved = movePreviewTransform(gesture.transform, delta, gesture.previewSize);
+      const locked = constrainMoveDeltaToAxis(delta, event.shiftKey);
+      const moved = movePreviewTransform(gesture.transform, locked, gesture.previewSize);
       queueValues({ item: gesture.item, localFrame: gesture.localFrame, values: moved });
     } else if (gesture.mode === 'scale') {
       queueValues({
