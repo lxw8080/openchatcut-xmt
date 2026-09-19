@@ -35,7 +35,7 @@ import {
 } from './timelineSeek';
 import { isTimelineDragOverChat } from './timelineChatDrop';
 import {
-  collectTimelineSnapPoints, snapPlayheadFrame, sortTimelineSnapPoints,
+  collectTimelineSnapPoints, findClosestSnapPoint, snapPlayheadFrame, sortTimelineSnapPoints,
   type SnapFrameHold, type SnapPoint,
 } from '../../editor/snap';
 import {
@@ -369,15 +369,57 @@ export function useTimelineController({
     setSeekSnapAt(null);
   };
 
+  // Clip drag owns the snap guide; clear any leftover playhead-scrub guide once.
+  const dragGestureId = drag?.id ?? null;
+  useEffect(() => {
+    if (dragGestureId !== null) endSeekSnap();
+  }, [dragGestureId]);
+
+  /** Scrub conversion: always returns a seekable frame (clamped). Past the
+   *  content edges still updates so sticky snap can release — unlike
+   *  `frameAtClientX`, which returns null outside the content span. */
+  const clampSeekFrameAtClientX = (clientX: number): number | null => {
+    if (total <= 0 || px <= 0) return null;
+    const rect = innerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const raw = Math.round((clientX - rect.left - HEADER_W) / px);
+    return Math.max(0, Math.min(total - 1, raw));
+  };
+
+  const seekSnapPointsForScrub = (): SnapPoint[] => {
+    // Clamp guides into the seekable range so sticky hold never locks onto
+    // `total` (item ends) while the playhead can only sit at `total - 1`.
+    const maxFrame = Math.max(0, total - 1);
+    return sortTimelineSnapPoints(
+      collectTimelineSnapPoints(liveStateRef.current, {}).map((point) => (
+        point.frame < 0 || point.frame > maxFrame
+          ? { ...point, frame: Math.max(0, Math.min(point.frame, maxFrame)) }
+          : point
+      )),
+    );
+  };
+
+  /** Grabbing the playhead hit pad must not seek — the pad is wider than the
+   *  line. Seed sticky hold only when the playhead already sits on a guide. */
+  const beginPlayheadScrub = () => {
+    if (!snapping || total <= 0) return;
+    if (!seekSnapPointsRef.current) {
+      seekSnapPointsRef.current = seekSnapPointsForScrub();
+    }
+    const frame = Math.max(0, Math.min(playheadRef.current, total - 1));
+    const point = findClosestSnapPoint(seekSnapPointsRef.current, frame, 0.5);
+    if (!point || point.frame !== frame) return;
+    seekSnapHoldRef.current = { frame: point.frame, type: point.type };
+    setSeekSnapAt((prev) => (prev === frame ? prev : frame));
+  };
+
   const seekPointerFrame = (frame: number) => {
     let target = Math.max(0, Math.min(frame, total - 1));
     let snapAt: number | null = null;
     if (snapping && total > 0) {
       if (!seekSnapPointsRef.current) {
         // Omit playheadFrame so the scrubber never snaps to itself.
-        seekSnapPointsRef.current = sortTimelineSnapPoints(
-          collectTimelineSnapPoints(liveStateRef.current, {}),
-        );
+        seekSnapPointsRef.current = seekSnapPointsForScrub();
       }
       const result = snapPlayheadFrame({
         frame: target,
@@ -399,7 +441,8 @@ export function useTimelineController({
   };
 
   const seekTo = (clientX: number) => {
-    seekPointerFrame(frameFromClientX(clientX));
+    const frame = clampSeekFrameAtClientX(clientX);
+    if (frame !== null) seekPointerFrame(frame);
   };
 
   const seekFrame = (f: number) => {
@@ -531,7 +574,7 @@ export function useTimelineController({
     if (scrubbing) {
       event.currentTarget.setPointerCapture(event.pointerId);
       event.stopPropagation();
-      const frame = frameAtClientX(event.clientX);
+      const frame = clampSeekFrameAtClientX(event.clientX);
       if (frame !== null) seekPointerFrame(frame);
     }
   };
@@ -551,7 +594,8 @@ export function useTimelineController({
       );
     }
     if (gesture.scrubbing) {
-      const frame = frameAtClientX(event.clientX);
+      // Clamp (not null-outside) so sticky snap can release past content edges.
+      const frame = clampSeekFrameAtClientX(event.clientX);
       if (frame !== null) seekPointerFrame(frame);
     }
   };
@@ -619,7 +663,7 @@ export function useTimelineController({
     frameFromClientX, trackFromClientY, copyCaptionSelections, pasteCaptionClipboard,
     pointer, drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel,
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
-    applyLibraryToClip, applyLibraryToTrack, seekTo, endSeekSnap, seekSnapAt, fitToView,
+    applyLibraryToClip, applyLibraryToTrack, seekTo, beginPlayheadScrub, endSeekSnap, seekSnapAt, fitToView,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
     markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   };

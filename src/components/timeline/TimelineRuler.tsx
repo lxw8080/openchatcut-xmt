@@ -63,6 +63,7 @@ export function TimelineRuler({
       onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX); }}
       onPointerUp={(e) => { e.currentTarget.style.cursor = ''; onSeekEnd?.(); }}
       onPointerCancel={() => onSeekEnd?.()}
+      onLostPointerCapture={() => onSeekEnd?.()}
       onDoubleClick={(e) => {
         if (pickMode) return;
         const target = e.target instanceof Element ? e.target : null;

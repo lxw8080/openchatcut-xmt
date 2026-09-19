@@ -50,7 +50,7 @@ export function Timeline(props: TimelineProps) {
     frameFromClientX, trackFromClientY, copyCaptionSelections, pasteCaptionClipboard,
     pointer, drag, marquee, pickDrag, startPick, onPointerMove, onPointerUp, onPointerCancel,
     activeSelectionMovePreview, libDropTarget, setLibDropTarget,
-    applyLibraryToClip, applyLibraryToTrack, seekTo, endSeekSnap, seekSnapAt, fitToView,
+    applyLibraryToClip, applyLibraryToTrack, seekTo, beginPlayheadScrub, endSeekSnap, seekSnapAt, fitToView,
     clearHoverPreview, updateHoverPreview, startSeekGesture, updateSeekGesture, finishSeekGesture,
     markers, zoneIn, zoneOut, editing, editMarker, setEditMarker, pinnedItemIds, clipClipboard,
   } = useTimelineController(props);
@@ -247,10 +247,14 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             );
           })}
 
-          {/* snap guide — appears while a drag edge or playhead scrub locks onto a target */}
-          {((drag && drag.snapAt !== null) || seekSnapAt !== null) && (
-            <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + (drag?.snapAt ?? seekSnapAt!) * px, height: RULER_H + tracksHeight }} />
-          )}
+          {/* snap guide — clip drag owns it while active; otherwise playhead scrub */}
+          {(() => {
+            const snapGuideAt = drag ? drag.snapAt : seekSnapAt;
+            if (snapGuideAt === null) return null;
+            return (
+              <div className="cc-snap-guide" style={{ position: 'absolute', top: 0, left: HEADER_W + snapGuideAt * px, height: RULER_H + tracksHeight }} />
+            );
+          })()}
 
           {hoverPreviewFrame !== null && (
             <div
@@ -297,13 +301,15 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
                   if (pickMode || e.button !== 0) return;
                   e.stopPropagation();
                   e.currentTarget.setPointerCapture(e.pointerId);
-                  seekTo(e.clientX);
+                  // Hit pad is wider than the line — don't seek on grab.
+                  beginPlayheadScrub();
                 }}
                 onPointerMove={(e) => {
                   if (e.currentTarget.hasPointerCapture(e.pointerId)) seekTo(e.clientX);
                 }}
                 onPointerUp={() => endSeekSnap()}
                 onPointerCancel={() => endSeekSnap()}
+                onLostPointerCapture={() => endSeekSnap()}
               />
               <div className="cc-playhead-handle" />
             </div>
