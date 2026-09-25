@@ -1,5 +1,5 @@
 // xmt 替换素材面板：右键带 props._xmt 的片段 → 按该文案段现场重跑检索给 Top-10 候选，
-// 选中即换源（保留槽位，matchStatus 标 manual），并按需把候选登记进媒体池。
+// 选中即换源（保留槽位时长，matchStatus 标 manual，计算见 ./replaceClip），并按需把候选登记进媒体池。
 // 列表左侧常显缩略图；悬停挂载唯一 video，seek 到 start_ms，播到 end_ms 暂停。
 import { useEffect, useRef, useState } from 'react';
 import { theme, themeAlpha } from '../theme';
@@ -8,6 +8,7 @@ import type { TimelineItem, TimelineState } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { showAppToast } from '../ui/appToast';
 import { fetchXmtCandidates, searchXmtSegments, type XmtCandidate } from './projectBridge';
+import { planClipReplacement } from './replaceClip';
 
 /** V1 片段携带的来源信息（editor_bridge.plan_to_project_doc 写入）。 */
 // 定义搬到 ./clipMeta（合成层也要读，见那里的说明）；此处保留同名再导出，既有 import 不变。
@@ -196,50 +197,29 @@ export function ReplaceClipDialog({ item, commands, timeline, onClose }: Replace
   if (!meta) return null;
 
   const fps = timeline.fps || 30;
-  const poolAssetId = (assetId: number | null): string => `xmt-asset-${assetId}`;
-
-  const registerPoolAsset = (candidate: XmtCandidate): void => {
-    if (!candidate.asset_id || !candidate.stream_url) return;
-    // addAsset 按 id 去重 —— 已在池里的候选重复登记是无操作。
-    const durationMs = candidate.asset_duration_ms ?? candidate.duration_ms ?? 0;
-    commands.addAsset({
-      id: poolAssetId(candidate.asset_id),
-      name: candidate.asset_title || `素材 ${candidate.asset_id}`,
-      kind: 'video',
-      src: candidate.stream_url,
-      durationInFrames: Math.max(1, Math.round(durationMs / 1000 * fps)),
-      width: candidate.asset_width ?? undefined,
-      height: candidate.asset_height ?? undefined,
-    });
-  };
 
   const replace = (candidate: XmtCandidate): void => {
     if (!candidate.stream_url) return;
     try {
-      registerPoolAsset(candidate);
-      const srcInFrame = Math.max(0, Math.round((candidate.start_ms ?? 0) / 1000 * fps));
-      const durationInFrames = Math.max(1, Math.round(
-        (candidate.duration_ms && candidate.duration_ms > 0
-          ? candidate.duration_ms
-          : item.durationInFrames / fps * 1000) / 1000 * fps,
-      ));
-      const nextItem: TimelineItem = {
-        ...item,
-        kind: 'video',
-        name: candidate.asset_title || item.name,
-        src: candidate.stream_url,
-        sourceAssetId: candidate.asset_id != null ? poolAssetId(candidate.asset_id) : undefined,
-        srcInFrame,
-        durationInFrames,
-        volume: 0,
-        props: { ...item.props, _xmt: { ...meta, matchStatus: 'manual', assetId: candidate.asset_id ?? null } },
-      };
-      const next: TimelineState = {
-        ...timeline,
-        items: timeline.items.map((candidate2) => (candidate2.id === item.id ? nextItem : candidate2)),
-      };
-      commands.applyState(next);
-      showAppToast(t('已替换素材'));
+      const plan = planClipReplacement(timeline, item, candidate);
+      if (!plan.next) {
+        showAppToast(
+          plan.error === 'overlap' ? t('替换会与相邻片段重叠，未替换') : t('替换失败，请重试'),
+          { error: true },
+        );
+        return;
+      }
+      // addAsset 按 id 去重 —— 已在池里的候选重复登记是无操作。
+      if (plan.poolAsset) commands.addAsset(plan.poolAsset);
+      commands.applyState(plan.next);
+      if (plan.shortfallFrames > 0) {
+        showAppToast(
+          t('已替换素材；这条素材比槽位短 {s} 秒，片段后留出空隙', { s: (plan.shortfallFrames / fps).toFixed(1) }),
+          { ms: 6000 },
+        );
+      } else {
+        showAppToast(t('已替换素材'));
+      }
       onClose();
     } catch (cause) {
       void cause;

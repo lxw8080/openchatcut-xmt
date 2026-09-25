@@ -10,6 +10,8 @@ export default {
   '替换占位素材': 'Replace placeholder',
   '已替换素材': 'Clip replaced',
   '替换失败，请重试': 'Replacement failed, please retry',
+  '替换会与相邻片段重叠，未替换': 'Not replaced: the clip would overlap its neighbour',
+  '已替换素材；这条素材比槽位短 {s} 秒，片段后留出空隙': 'Clip replaced; this asset is {s}s shorter than the slot, leaving a gap after it',
   '替换': 'Replace',
   '相似度': 'Similarity',
   '（无事件摘要）': '(no event summary)',
