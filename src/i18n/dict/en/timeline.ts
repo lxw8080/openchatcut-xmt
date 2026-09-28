@@ -256,6 +256,7 @@ export default {
   '滑移模式 (U)：保持时间线位置和时长，仅拖动源素材区间': 'Slip mode (U): keep timeline position and duration, drag only the source range',
   '移动字幕': 'Move captions',
   '粘贴字幕': 'Paste captions',
+  '删除字幕': 'Delete captions',
   '翻译全部': 'Translate all',
   '自动闪避': 'Auto duck',
   '请重新选择同类型文件': 'Re-choose a file of the same type',

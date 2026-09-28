@@ -379,7 +379,7 @@ function useCaptionSelectionMove(options: {
 
 function CaptionCueBlock({
   page, index, target, selectionRef, locked, selected, px, fps, moveOffsetY,
-  selectionMovePreview, trim, move, selectionMove, onSelect, onDelete, onMenu,
+  selectionMovePreview, trim, move, selectionMove, onSelect, onMenu,
 }: {
   page: CaptionPage; index: number; target?: ManualCueTarget; selectionRef: CaptionSelectionRef | null;
   locked: boolean; selected: boolean; px: number; fps: number;
@@ -388,7 +388,6 @@ function CaptionCueBlock({
   move: ReturnType<typeof useCaptionMove>;
   selectionMove: ReturnType<typeof useCaptionSelectionMove>;
   onSelect: (selection: CaptionSelectionRef | null, options?: CaptionSelectOptions) => void;
-  onDelete: (target: ManualCueTarget) => void;
   onMenu: (event: ReactMouseEvent, target: ManualCueTarget, selection: CaptionSelectionRef) => void;
 }) {
   const t = useT();
@@ -450,11 +449,6 @@ function CaptionCueBlock({
         if (captionContextMenuIntent(event.ctrlKey) === 'ignore-after-toggle') return;
         if (!selected) onSelect(selectionRef);
         onMenu(event, target, selectionRef);
-      }}
-      onKeyDown={(event) => {
-        if (!target || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
-        event.preventDefault();
-        onDelete(target);
       }}>
       {handle('start')}<span>{text}</span>{handle('end')}
     </div>
@@ -667,7 +661,7 @@ export function CaptionTrackLane({
         return <CaptionCueBlock key={key} page={page} index={index} target={target} selectionRef={selectionRef}
           locked={locked} selected={selected} px={px} fps={state.fps} moveOffsetY={moveOffsetY}
           selectionMovePreview={selectionMovePreview}
-          trim={trim} move={move} selectionMove={selectionMove} onSelect={selectCaption} onDelete={remove}
+          trim={trim} move={move} selectionMove={selectionMove} onSelect={selectCaption}
           onMenu={(event, cue, selection) => {
             setTranslationOpen(false);
             setMenuError(null);

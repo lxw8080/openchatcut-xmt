@@ -36,6 +36,8 @@ interface ShortcutDeps {
   setFxClip: (fx: FxClip | null) => void;
   copySelectedCaptions: () => boolean;
   pasteCaptionClipboard: () => boolean;
+  /** Delete the selected caption cues; returns false when no deletable caption is selected. */
+  deleteSelectedCaptions: () => boolean;
 }
 
 export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | null; zoneOut: number | null; clipClipboard: ClipClipboardOps } {
@@ -43,6 +45,7 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
     bladeSelected, setEditMarker, fxClip, setFxClip, copySelectedCaptions, pasteCaptionClipboard,
+    deleteSelectedCaptions,
   } = deps;
 
   // ── I/O marks + shuttle + clipboard ─────────────────────────────────────
@@ -402,6 +405,9 @@ export function useTimelineShortcuts(deps: ShortcutDeps): { zoneIn: number | nul
         });
       },
       deleteSelected: (ripple) => {
+        // Caption selections take priority over item selections, mirroring
+        // copySelected: with both selected, one press deletes the caption cues.
+        if (deleteSelectedCaptions()) return;
         const ids = selectedIdsOf(state);
         if (!ids.length) return;
         if (ids.length === 1) {

@@ -16,6 +16,7 @@ import {
   captionSelectionKey, captionSelectionsInFrameRange, resolveCaptionSelection,
   type CaptionSelectionRef,
 } from '../../captions/captionSelection';
+import { captionSelectionDeletePatches } from '../../captions/captionDeletion';
 import {
   moveTimelineSelectionByDelta, type TimelineSelectionMovePreview,
 } from '../../captions/captionGroupMove';
@@ -312,6 +313,18 @@ export function useTimelineController({
       { type: 'track.create', track: { id: trackId, kind: 'caption', name: t('复制字幕') } },
       { type: 'setCaptions', captions, track: trackId },
     ], t('粘贴字幕'));
+    return true;
+  };
+  // Delete/Backspace on a caption selection: every selected cue across all
+  // caption tracks in one batch = one undo step; the selection is cleared.
+  const deleteSelectedCaptions = (): boolean => {
+    const patches = captionSelectionDeletePatches(state, selectedCaptions);
+    if (!patches.length) return false;
+    onSelectCaption(null);
+    commands.batch(
+      patches.map(({ trackId, patch }) => ({ type: 'updateCaptions' as const, patch, track: trackId })),
+      t('删除字幕'),
+    );
     return true;
   };
 
@@ -629,7 +642,7 @@ export function useTimelineController({
     shortcutApiRef, state, commands, playerRef, playheadRef, total,
     seekFrame, paintPlayhead, setEditMode, setSnapping, fitToView, zoomBy,
     bladeSelected, setEditMarker, fxClip, setFxClip,
-    copySelectedCaptions: copyCaptionSelections, pasteCaptionClipboard,
+    copySelectedCaptions: copyCaptionSelections, pasteCaptionClipboard, deleteSelectedCaptions,
   });
 
   const editing = markers.find((m) => m.id === editMarker) ?? null;
