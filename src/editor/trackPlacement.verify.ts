@@ -12,6 +12,7 @@
  */
 import assert from 'node:assert/strict';
 import { reduce } from './reducerTimeline.ts';
+import { laneMoveOrder } from './reducerTimelineHelpers.ts';
 import { timelineTrackIds } from './types.ts';
 import type { TimelineItem, TimelineState, TrackFlags, TrackId } from './types.ts';
 
@@ -65,12 +66,44 @@ const createTrack = (s: TimelineState, id: string, kind: TrackFlags['kind'], ord
     trackOrder: ['C1', 'V2', 'V1', 'A1', 'A2'],
     tracks: { C1: { kind: 'caption' }, V2: { kind: 'video' }, V1: { kind: 'video' }, A1: { kind: 'audio' }, A2: { kind: 'audio' } },
   });
-  // V1（视频组底）上移一层：order 从视频组底部数，上移一层 = order 2。
-  const up = reduce(s, { type: 'track.update', track: 'V1', patch: { order: 2 } } as never);
+  // V1（视频组底）上移一层。video order 从组底 0 起数（placeTrack 组内不含被移轨道），
+  // 目标是组顶 → order 1。旧注释按「从底 1 起数」写成 order 2，恰被钳制到同一落点。
+  const up = reduce(s, { type: 'track.update', track: 'V1', patch: { order: laneMoveOrder('video', 2, 0) } } as never);
   assert.deepEqual(timelineTrackIds(up), ['C1', 'V1', 'V2', 'A1', 'A2']);
   // 字幕轨在组内下移（order 从顶数），跨组轨道不动。
   const capDown = reduce(s, { type: 'track.update', track: 'C1', patch: { order: 0 } } as never);
   assert.deepEqual(timelineTrackIds(capDown), ['C1', 'V2', 'V1', 'A1', 'A2']);
+}
+
+// 2b. 菜单「上移/下移一层」的 order 数学（laneMoveOrder）：三条视频轨各挪一格。
+// 旧实现按「从底 1 起数」给 video 发 groupLength - targetIndex，比 placeTrack 的
+// 0 基多 1：下移一层算出来的落点就是自己当前槽位（no-op，用户点了下移没反应），
+// 上移一层则直接冲到组顶。
+{
+  const s = base({
+    trackOrder: ['C1', 'V3', 'V2', 'V1', 'A1'],
+    tracks: { C1: { kind: 'caption' }, V3: { kind: 'video' }, V2: { kind: 'video' }, V1: { kind: 'video' }, A1: { kind: 'audio' } },
+  });
+  // V1（组底）上移一层 → 中间层，不再冲顶。
+  const v1Up = reduce(s, { type: 'track.update', track: 'V1', patch: { order: laneMoveOrder('video', 3, 1) } } as never);
+  assert.deepEqual(timelineTrackIds(v1Up), ['C1', 'V3', 'V1', 'V2', 'A1']);
+  // V3（组顶）下移一层 → 中间层；旧实现发 order 2 被 placeTrack 读成组顶 → 原地不动。
+  const v3Down = reduce(s, { type: 'track.update', track: 'V3', patch: { order: laneMoveOrder('video', 3, 1) } } as never);
+  assert.deepEqual(timelineTrackIds(v3Down), ['C1', 'V2', 'V3', 'V1', 'A1']);
+  // 两条视频轨：组顶下移一层 → 组底。
+  const two = base({
+    trackOrder: ['C1', 'V2', 'V1', 'A1'],
+    tracks: { C1: { kind: 'caption' }, V2: { kind: 'video' }, V1: { kind: 'video' }, A1: { kind: 'audio' } },
+  });
+  const v2Down = reduce(two, { type: 'track.update', track: 'V2', patch: { order: laneMoveOrder('video', 2, 1) } } as never);
+  assert.deepEqual(timelineTrackIds(v2Down), ['C1', 'V1', 'V2', 'A1']);
+  // 音频轨（从顶数）不受该修复影响：A1 下移一层落到 A2 之下。
+  const audioState = base({
+    trackOrder: ['C1', 'V2', 'V1', 'A1', 'A2'],
+    tracks: { C1: { kind: 'caption' }, V2: { kind: 'video' }, V1: { kind: 'video' }, A1: { kind: 'audio' }, A2: { kind: 'audio' } },
+  });
+  const a1Down = reduce(audioState, { type: 'track.update', track: 'A1', patch: { order: laneMoveOrder('audio', 2, 1) } } as never);
+  assert.deepEqual(timelineTrackIds(a1Down), ['C1', 'V2', 'V1', 'A2', 'A1']);
 }
 
 // ── 3. 插入落轨（ripple）：空隙放得下就不再推后面的素材 ──────────────────

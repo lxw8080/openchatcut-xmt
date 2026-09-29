@@ -17,6 +17,10 @@ const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
  * lane list the regrouping disagreed with (e.g. legacy states whose caption
  * lane falls back to the bottom row) saw captions teleport to the top row the
  * moment any track was added.
+ *
+ * Counting base detail: the group excludes the moved track itself, so a video
+ * `order` is 0-based from the bottom (0 = bottom slot, group.length = top);
+ * caption/audio `order` is 0-based from the top (0 = top slot).
  */
 export function placeTrack(s: TimelineState, track: TrackId, kind: TrackKind, order?: number): TrackId[] {
   const ids = timelineTrackIds(s).filter((id) => id !== track);
@@ -34,6 +38,18 @@ export function placeTrack(s: TimelineState, track: TrackId, kind: TrackKind, or
     insertAt = boundary < 0 ? ids.length : boundary;
   }
   return [...ids.slice(0, insertAt), track, ...ids.slice(insertAt)];
+}
+
+/**
+ * `order` for placeTrack to land the track on `targetIndex` — the destination
+ * slot within its kind group counted from the top lane (the menu's groupIndex
+ * basis), `groupLength` including the moved track. Video counts from the
+ * bottom, so its order must be groupLength - 1 - targetIndex; the earlier
+ * 1-based groupLength - targetIndex made every video 下移一层 resolve back to
+ * the track's own slot (no-op) while 上移 overshot to the group top.
+ */
+export function laneMoveOrder(kind: TrackKind, groupLength: number, targetIndex: number): number {
+  return kind === 'video' ? groupLength - 1 - targetIndex : targetIndex;
 }
 
 export function withTrackCaptions(s: TimelineState, captions: CaptionsData | null, track?: TrackId): TimelineState {
