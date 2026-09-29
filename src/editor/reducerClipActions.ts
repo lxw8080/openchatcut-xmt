@@ -20,11 +20,25 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
     case 'add': {
       if (s.tracks?.[a.item.track]?.locked) return s;
       if (s.items.some((item) => item.id === a.item.id)) return s;
-      const requestedStart = a.startFrame ?? trackEnd(s, a.item.track);
+      let baseState = s;
+      let requestedStart = a.startFrame ?? trackEnd(s, a.item.track);
       if (!Number.isFinite(requestedStart) || requestedStart < 0
         || !Number.isFinite(a.item.durationInFrames) || a.item.durationInFrames < 1) return s;
-      let baseState = s;
       if (a.ripple) {
+        // A drop landing inside a clip inserts at its nearest edge (left half →
+        // clip start, right half → clip end). Without the snap the straddler is
+        // not in the push set (it starts before the drop), so the new clip gets
+        // clamped into a later gap while the tail still shifts — the drop point
+        // is lost and a phantom hole opens before the pushed clips.
+        const straddler = s.items.find((item) => item.track === a.item.track
+          && item.startFrame < requestedStart
+          && item.startFrame + item.durationInFrames > requestedStart);
+        if (straddler) {
+          const straddlerEnd = straddler.startFrame + straddler.durationInFrames;
+          requestedStart = requestedStart - straddler.startFrame <= straddlerEnd - requestedStart
+            ? straddler.startFrame
+            : straddlerEnd;
+        }
         // Insert only has to make room when the drop actually lands on existing
         // clips; a free slot keeps every later clip at its authored frame
         // instead of shifting the whole tail of the track.

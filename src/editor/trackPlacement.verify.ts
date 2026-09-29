@@ -6,6 +6,10 @@
  *    fallback 排到底行），新增任意轨道都会把字幕轨瞬移到最顶行。
  * 2. 'add' 带 ripple（插入落轨）时，旧实现不看落点是否空闲，一律把落点之后的
  *    同轨片段整段后移——拖进放得下的空隙也会推走后面的素材。
+ * 3. 落点骑跨在某片段身上时，旧实现的后推集合不含该片段（起点在落点之前），
+ *    新片段落不下、被钳到更后面的空隙，落点之后的尾巴却照样被推走——
+ *    落点丢失、被推片段前面留下一个凭空的洞。修复：骑跨落点先吸附到该片段
+ *    最近的边（左半→头，右半→尾），再按「压到才推」让位。
  *
  * 这里对 reducer 真跑，断言新行为：新轨道只插进自己 kind 的组内，其他轨道原位不动；
  * ripple 只在落点真的压到已有片段时才让位。
@@ -121,7 +125,9 @@ const createTrack = (s: TimelineState, id: string, kind: TrackFlags['kind'], ord
   assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 0);
 }
 
-// 落点真压到已有片段：插入语义保留，后续片段整体让位（后移新片段时长）。
+// 落点骑跨片段右半：插入点吸附到该片段尾部，空隙放得下就直放，谁都不推。
+// 旧实现不吸附：straddler 起点在落点之前、不在后推集合里，新片段被钳进后面的
+// 空隙，b 却照样被推走——落点丢失还在 b 前面留下一个凭空出现的洞。
 {
   const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90)] });
   const out = reduce(s, {
@@ -130,11 +136,38 @@ const createTrack = (s: TimelineState, id: string, kind: TrackFlags['kind'], ord
     startFrame: 80,
     ripple: true,
   } as never);
-  // b 让位（120 → 150）；new 自身被空隙钳到 90 起（80 起会压 a 的尾巴，空隙 90-120 改造后正好放下）
-  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 150);
+  assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 90); // 吸附到 a 尾
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 120); // 放得下，不推
   assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 0);
-  const placed = out.items.find((it) => it.id === 'new')!;
-  assert.ok(placed.startFrame >= 90 && placed.startFrame + placed.durationInFrames <= 120, `new placed in gap: ${placed.startFrame}+${placed.durationInFrames}`);
+}
+
+// 落点骑跨片段右半、空隙放不下：吸附到 a 尾后仍压到 b，b 统一后移新片段时长。
+{
+  const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90)] });
+  const out = reduce(s, {
+    type: 'add',
+    item: clip('new', 'V1', 0, 50),
+    startFrame: 80,
+    ripple: true,
+  } as never);
+  assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 90);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 170);
+  assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 0);
+}
+
+// 落点骑跨片段左半（靠近头部）：吸附到片段头，落点起的整层统一后移——
+// 旧实现里新片段会被钳到 90 帧之后、只推 b 不推 a，落点完全丢失。
+{
+  const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90)] });
+  const out = reduce(s, {
+    type: 'add',
+    item: clip('new', 'V1', 0, 30),
+    startFrame: 10,
+    ripple: true,
+  } as never);
+  assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 0);
+  assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 30);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 150);
 }
 
 // 空轨道上插入落轨：直接放置，无片段可推。
