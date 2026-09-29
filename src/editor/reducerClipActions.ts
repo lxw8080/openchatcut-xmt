@@ -47,9 +47,24 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
           && item.startFrame < requestedEnd
           && item.startFrame + item.durationInFrames > requestedStart);
         if (collides) {
-          const shifts = new Map(s.items
+          // Room is made by shifting only the contiguous chain that actually
+          // blocks the new clip, and each blocker moves by just enough to abut
+          // the previous one; the first gap wide enough to absorb the remainder
+          // ends the chain and everything behind it keeps its authored frame —
+          // the same boundary rule setSpeed applies (a hand-left gap is not
+          // dragged along). The old uniform shift moved the whole tail of the
+          // track by the full clip length: gaps travelled with it and clips
+          // parked far behind still jumped later in time.
+          const chain = s.items
             .filter((item) => item.track === a.item.track && item.startFrame >= requestedStart)
-            .map((item) => [item.id, a.item.durationInFrames]));
+            .toSorted((left, right) => left.startFrame - right.startFrame);
+          const shifts = new Map<string, number>();
+          let occupancyEnd = requestedEnd;
+          for (const item of chain) {
+            if (item.startFrame >= occupancyEnd) break;
+            shifts.set(item.id, occupancyEnd - item.startFrame);
+            occupancyEnd += item.durationInFrames;
+          }
           const shifted = applyRippleShifts(s, shifts);
           if (!shifted) return s;
           baseState = shifted;

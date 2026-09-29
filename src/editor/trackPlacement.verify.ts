@@ -10,6 +10,10 @@
  *    新片段落不下、被钳到更后面的空隙，落点之后的尾巴却照样被推走——
  *    落点丢失、被推片段前面留下一个凭空的洞。修复：骑跨落点先吸附到该片段
  *    最近的边（左半→头，右半→尾），再按「压到才推」让位。
+ * 4. 真要让位时也只推「真正挡路的连续链」，每段只挪刚好需要的量；链后第一
+ *    个放得下的空隙即边界，其后片段保持原时间点（与 setSpeed 的
+ *    contiguousFollowers 同一哲学：用户特意留的空隙不被搬走）。旧实现把插入
+ *    点后的整层统一后移新片段时长——空隙跟着平移、远处不挡路的素材也往后跳。
  *
  * 这里对 reducer 真跑，断言新行为：新轨道只插进自己 kind 的组内，其他轨道原位不动；
  * ripple 只在落点真的压到已有片段时才让位。
@@ -141,7 +145,8 @@ const createTrack = (s: TimelineState, id: string, kind: TrackFlags['kind'], ord
   assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 0);
 }
 
-// 落点骑跨片段右半、空隙放不下：吸附到 a 尾后仍压到 b，b 统一后移新片段时长。
+// 落点骑跨片段右半、空隙放不下：吸附到 a 尾后仍压到 b，b 只后移真正挡路的
+// 20 帧、贴到新片段尾（旧实现整层统一 +50，b 前面凭空多出 30 帧）。
 {
   const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90)] });
   const out = reduce(s, {
@@ -151,12 +156,13 @@ const createTrack = (s: TimelineState, id: string, kind: TrackFlags['kind'], ord
     ripple: true,
   } as never);
   assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 90);
-  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 170);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 140); // 120 + 20 恰好贴住 new 尾
   assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 0);
 }
 
-// 落点骑跨片段左半（靠近头部）：吸附到片段头，落点起的整层统一后移——
-// 旧实现里新片段会被钳到 90 帧之后、只推 b 不推 a，落点完全丢失。
+// 落点骑跨片段左半（靠近头部）：吸附到片段头，后续只推「真正挡路的连续链」，
+// 且每段只挪刚好需要的量；a 前的 [90,120) 空隙恰好吸收 30 帧 → b 原位不动。
+// 旧实现从落点起整层统一 +30：空隙被原样搬走，b 也被推到 150。
 {
   const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90)] });
   const out = reduce(s, {
@@ -167,7 +173,54 @@ const createTrack = (s: TimelineState, id: string, kind: TrackFlags['kind'], ord
   } as never);
   assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 0);
   assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 30);
-  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 150);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 120); // 空隙吸收，不动
+}
+
+// 挡路链后面还有大片空隙时，空隙之后的所有片段一帧不动（「该层级素材整段
+// 往后推」的老症状）：c 在 400，离插入点很远且隔着空隙，必须原地。
+{
+  const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90), clip('c', 'V1', 400, 100)] });
+  const out = reduce(s, {
+    type: 'add',
+    item: clip('new', 'V1', 0, 30),
+    startFrame: 10,
+    ripple: true,
+  } as never);
+  assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 0);
+  assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 30);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 120);
+  assert.equal(out.items.find((it) => it.id === 'c')!.startFrame, 400); // 旧实现推到 430
+}
+
+// 落进放不下的空隙：只把压到的 b 挪「差多少挪多少」（30 帧）贴住新片段尾，
+// 落点保住；旧实现 b 整段 +50、落点后的尾巴全部跟着走。
+{
+  const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 120, 90)] });
+  const out = reduce(s, {
+    type: 'add',
+    item: clip('new', 'V1', 0, 50),
+    startFrame: 100,
+    ripple: true,
+  } as never);
+  assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 100);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 150); // 120 + 30，恰好贴住 new 尾
+  assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 0);
+}
+
+// 满轨（无空隙可吸收）：插入仍按经典语义把后面的连续链整段让位——
+// 这是插入落轨的本意；能不推的场景上面已钉住。
+{
+  const s = base({ items: [clip('a', 'V1', 0, 90), clip('b', 'V1', 90, 90), clip('c', 'V1', 180, 90)] });
+  const out = reduce(s, {
+    type: 'add',
+    item: clip('new', 'V1', 0, 30),
+    startFrame: 10,
+    ripple: true,
+  } as never);
+  assert.equal(out.items.find((it) => it.id === 'new')!.startFrame, 0);
+  assert.equal(out.items.find((it) => it.id === 'a')!.startFrame, 30);
+  assert.equal(out.items.find((it) => it.id === 'b')!.startFrame, 120);
+  assert.equal(out.items.find((it) => it.id === 'c')!.startFrame, 210);
 }
 
 // 空轨道上插入落轨：直接放置，无片段可推。
