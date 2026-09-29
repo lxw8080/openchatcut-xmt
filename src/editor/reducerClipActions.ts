@@ -25,12 +25,21 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
         || !Number.isFinite(a.item.durationInFrames) || a.item.durationInFrames < 1) return s;
       let baseState = s;
       if (a.ripple) {
-        const shifts = new Map(s.items
-          .filter((item) => item.track === a.item.track && item.startFrame >= requestedStart)
-          .map((item) => [item.id, a.item.durationInFrames]));
-        const shifted = applyRippleShifts(s, shifts);
-        if (!shifted) return s;
-        baseState = shifted;
+        // Insert only has to make room when the drop actually lands on existing
+        // clips; a free slot keeps every later clip at its authored frame
+        // instead of shifting the whole tail of the track.
+        const requestedEnd = requestedStart + a.item.durationInFrames;
+        const collides = s.items.some((item) => item.track === a.item.track
+          && item.startFrame < requestedEnd
+          && item.startFrame + item.durationInFrames > requestedStart);
+        if (collides) {
+          const shifts = new Map(s.items
+            .filter((item) => item.track === a.item.track && item.startFrame >= requestedStart)
+            .map((item) => [item.id, a.item.durationInFrames]));
+          const shifted = applyRippleShifts(s, shifts);
+          if (!shifted) return s;
+          baseState = shifted;
+        }
       }
       const requested: TimelineItem = { ...a.item, startFrame: requestedStart };
       const delta = clampMoveDeltaToTrackGaps(

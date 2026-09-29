@@ -16,6 +16,10 @@ interface TrackContextMenuProps {
   hasSelectable: boolean;
   deleteBlockedReason: TrackDeletePlan['blockedReason'];
   onInsert: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onTighten: () => void;
   onSelectAll: () => void;
   onClear: () => void;
@@ -66,7 +70,8 @@ function insertMenuItem(kind: TrackKind, t: (text: string) => string): { label: 
 
 export function TrackContextMenu({
   kind, x, y, hidden, muted, locked, canTighten, hasContents, hasSelectable, deleteBlockedReason,
-  onInsert, onTighten, onSelectAll, onClear, onToggleHidden, onToggleMuted, onToggleLocked,
+  onInsert, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onTighten, onSelectAll, onClear,
+  onToggleHidden, onToggleMuted, onToggleLocked,
   onRename, onOpenDuck, onOpenCaptionStyle, onOpenTranslate, onDelete, onClose,
 }: TrackContextMenuProps) {
   const t = useT();
@@ -121,6 +126,8 @@ export function TrackContextMenu({
       {kind !== 'caption' && <MenuItem label={t(muted ? '取消静音' : '静音轨道')} icon={muted ? 'volumeOff' : 'volume'} checked={muted} onClick={run(onToggleMuted)} />}
       <MenuItem label={t(locked ? '解锁轨道' : '锁定轨道')} icon={locked ? 'lock' : 'unlock'} checked={locked} onClick={run(onToggleLocked)} />
       <MenuItem label={t('重命名轨道')} icon="pencil" onClick={run(onRename)} />
+      <MenuItem label={t('上移一层')} icon="arrowUp" disabled={!canMoveUp} onClick={run(onMoveUp)} />
+      <MenuItem label={t('下移一层')} icon="arrowDown" disabled={!canMoveDown} onClick={run(onMoveDown)} />
       <Separator />
       {kind === 'caption' ? (
         <>

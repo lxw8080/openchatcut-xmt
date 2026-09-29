@@ -8,15 +8,32 @@ import type { Action } from './reducerActions';
 
 const TRACK_KIND_ORDER: readonly TrackKind[] = ['caption', 'video', 'audio'];
 
+/**
+ * Place `track` within its kind's lane group, leaving every other lane where it
+ * sits. `order` is the within-group slot — video counts from the bottom lane,
+ * caption/audio from the top; the default adds a video track on top of its
+ * group and appends caption/audio tracks after their siblings. The previous
+ * caption→video→audio regrouping rewrote the whole order on every create, so a
+ * lane list the regrouping disagreed with (e.g. legacy states whose caption
+ * lane falls back to the bottom row) saw captions teleport to the top row the
+ * moment any track was added.
+ */
 export function placeTrack(s: TimelineState, track: TrackId, kind: TrackKind, order?: number): TrackId[] {
-  const groups = Object.fromEntries(TRACK_KIND_ORDER.map((entry) => [
-    entry,
-    timelineTrackIds(s).filter((id) => id !== track && trackKind(s, id) === entry),
-  ])) as Record<TrackKind, TrackId[]>;
-  const lane = groups[kind];
-  const sourceOrder = Math.max(0, Math.min(order ?? lane.length, lane.length));
-  lane.splice(kind === 'video' ? lane.length - sourceOrder : sourceOrder, 0, track);
-  return TRACK_KIND_ORDER.flatMap((entry) => groups[entry]);
+  const ids = timelineTrackIds(s).filter((id) => id !== track);
+  const group = ids.filter((id) => trackKind(s, id) === kind);
+  const sourceOrder = Math.max(0, Math.min(order ?? group.length, group.length));
+  const groupIndex = kind === 'video' ? group.length - sourceOrder : sourceOrder;
+  let insertAt: number;
+  if (groupIndex < group.length) {
+    insertAt = ids.indexOf(group[groupIndex]!);
+  } else if (group.length) {
+    insertAt = ids.indexOf(group[group.length - 1]!) + 1;
+  } else {
+    // first lane of its kind: caption above everything, audio below, video in between
+    const boundary = ids.findIndex((id) => TRACK_KIND_ORDER.indexOf(trackKind(s, id)) > TRACK_KIND_ORDER.indexOf(kind));
+    insertAt = boundary < 0 ? ids.length : boundary;
+  }
+  return [...ids.slice(0, insertAt), track, ...ids.slice(insertAt)];
 }
 
 export function withTrackCaptions(s: TimelineState, captions: CaptionsData | null, track?: TrackId): TimelineState {

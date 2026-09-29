@@ -396,6 +396,11 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
         const clearPlan = trackClearPlan(state, trackId);
         const deletePlan = trackDeletePlan(state, trackId);
         const hidden = kind === 'caption' ? !captions?.enabled : !!config.hidden;
+        // lane reordering stays within the same-kind group (placeTrack semantics);
+        // video order counts from the bottom lane, caption/audio from the top
+        const kindGroup = trackIds.filter((id) => trackKind(state, id) === kind);
+        const groupIndex = kindGroup.indexOf(trackId);
+        const orderFor = (withinGroupIndex: number) => (kind === 'video' ? kindGroup.length - withinGroupIndex : withinGroupIndex);
         return (
           <TrackContextMenu
             kind={kind}
@@ -409,6 +414,10 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
             hasSelectable={kind === 'caption' ? captionSelections.length > 0 : items.length > 0}
             deleteBlockedReason={deletePlan.blockedReason}
             onInsert={() => beginTrackInsert(trackId, trackMenu.frame)}
+            canMoveUp={groupIndex > 0}
+            canMoveDown={groupIndex >= 0 && groupIndex < kindGroup.length - 1}
+            onMoveUp={() => commands.updateTrack(trackId, { order: orderFor(groupIndex - 1) })}
+            onMoveDown={() => commands.updateTrack(trackId, { order: orderFor(groupIndex + 1) })}
             onTighten={() => {
               if (kind === 'caption' && captionTighten?.changed) commands.setCaptions(captionTighten.captions, trackId);
               else if (kind !== 'caption') commands.tightenTrack(trackId);
