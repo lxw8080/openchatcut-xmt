@@ -511,6 +511,7 @@ export function MediaPoolPanel({
       {libraryImportOpen && onRegisterPoolAsset && (
         <LibraryImportDialog
           fps={fps}
+          poolAssets={assets}
           onAddAsset={onRegisterPoolAsset}
           onClose={() => { setLibraryImportOpen(false); modalFocus.restore(); }}
         />

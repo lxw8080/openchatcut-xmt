@@ -1,26 +1,62 @@
 // xmt「项目素材库」对话框：分页列出本项目的库素材，选中即把同源 stream URL
 // 登记为媒体池资产 —— 不拷贝文件、不自动插入时间线；已在池中的素材回传
 // already_imported 防重复添加。
-import { useEffect, useState } from 'react';
+//
+// 两种检索：「关键词」按标题 / 项目 / 文件名子串（原行为）；「语义」按画面内容，
+// 走宿主与替换面板同一个向量检索，分段命中按素材聚合，每行带命中的那几秒。
+// 语义只覆盖已解读的素材——没解读的片子没有分段，只能用关键词找。
+import { useEffect, useMemo, useState } from 'react';
 import { theme, themeAlpha } from '../theme';
 import type { MediaAsset } from '../editor/types';
 import { useT } from '../i18n/locale';
-import { fetchXmtLibraryAssets, type XmtLibraryAsset } from './projectBridge';
+import {
+  fetchXmtLibraryAssets,
+  type XmtLibraryAsset,
+  type XmtLibrarySearchMode,
+} from './projectBridge';
 
 interface LibraryImportDialogProps {
   fps: number;
+  /** 当前媒体池：AI 方案落进来的素材 id 是 `asset-<id>`，与本对话框的
+   *  `xmt-asset-<id>` 不同，池子按 id 去重拦不住——按同源地址认「已在媒体池」。 */
+  poolAssets?: readonly MediaAsset[];
   onAddAsset: (asset: MediaAsset) => void;
   onClose: () => void;
 }
 
 const PER_PAGE = 24;
 
-export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportDialogProps) {
+/** 去掉查询串与片段标识，只比路径（池里的 src 可能带缓存参数）。 */
+function srcPath(src: string): string {
+  return src.split(/[?#]/, 1)[0];
+}
+
+/** 素材内时间点：m:ss。 */
+function fmtClock(ms: number | null | undefined): string {
+  const total = Math.max(0, Math.floor((ms ?? 0) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+interface AppliedSearch {
+  query: string;
+  mode: XmtLibrarySearchMode;
+}
+
+export function LibraryImportDialog({ fps, poolAssets, onAddAsset, onClose }: LibraryImportDialogProps) {
   const t = useT();
+  const poolSrcs = useMemo(
+    () => new Set((poolAssets ?? []).map((asset) => srcPath(asset.src))),
+    [poolAssets],
+  );
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [query, setQuery] = useState('');
-  const [search, setSearch] = useState('');
+  const [mode, setMode] = useState<XmtLibrarySearchMode>('keyword');
+  // 真正发出去的那次检索：输入框里敲字不触发请求，回车 / 点搜索 / 切模式才换它。
+  const [applied, setApplied] = useState<AppliedSearch>({ query: '', mode: 'keyword' });
+  // 服务端实际走的模式（语义模式下查询为空时服务端回落全量列表）。
+  const [resultMode, setResultMode] = useState<XmtLibrarySearchMode>('keyword');
   const [items, setItems] = useState<XmtLibraryAsset[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +65,18 @@ export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportD
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetchXmtLibraryAssets({ page, perPage: PER_PAGE, query: search || undefined })
+    fetchXmtLibraryAssets({
+      page,
+      perPage: PER_PAGE,
+      query: applied.query || undefined,
+      mode: applied.mode,
+    })
       .then((data) => {
         if (!alive) return;
         setItems(data.items);
         setPages(Math.max(1, data.pages));
+        setTotal(data.total);
+        setResultMode(data.mode);
         setError(null);
       })
       .catch((cause: unknown) => {
@@ -41,7 +84,19 @@ export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportD
       })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [page, search]);
+  }, [page, applied]);
+
+  const runSearch = (nextMode: XmtLibrarySearchMode = mode): void => {
+    setPage(1);
+    setApplied({ query: query.trim(), mode: nextMode });
+  };
+
+  const switchMode = (nextMode: XmtLibrarySearchMode): void => {
+    if (nextMode === mode) return;
+    setMode(nextMode);
+    // 已经敲了查询词就按新模式立刻重搜；没敲词时两种模式都是全量列表，不必重拉。
+    if (query.trim()) runSearch(nextMode);
+  };
 
   const importAsset = (row: XmtLibraryAsset): void => {
     onAddAsset({
@@ -56,8 +111,16 @@ export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportD
     setImportedIds((previous) => new Set(previous).add(row.id));
   };
 
+  const isImported = (item: XmtLibraryAsset): boolean =>
+    item.already_imported || importedIds.has(item.id) || poolSrcs.has(srcPath(item.stream_url));
+  const pending = (items ?? []).filter((item) => !isImported(item));
+  const importAllOnPage = (): void => {
+    pending.forEach(importAsset);
+  };
+
   const row = (item: XmtLibraryAsset) => {
-    const imported = item.already_imported || importedIds.has(item.id);
+    const imported = isImported(item);
+    const matches = resultMode === 'semantic' ? (item.matches ?? []) : [];
     return (
       <div key={item.id} style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px',
@@ -78,7 +141,25 @@ export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportD
               ? `${(item.duration_ms / 1000).toFixed(1)}${t('秒')}`
               : ''}
             {item.width && item.height ? ` · ${item.width}×${item.height}` : ''}
+            {resultMode === 'semantic' && typeof item.score === 'number'
+              ? ` · ${t('相似度')} ${(item.score * 100).toFixed(0)}%`
+              : ''}
           </div>
+          {matches.map((match, index) => (
+            <div
+              key={match.video_segment_id ?? `m-${index}`}
+              title={match.event_summary ?? undefined}
+              style={{
+                fontSize: 11, color: theme.textMuted, marginTop: 2,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}
+            >
+              <span style={{ color: theme.textDim, fontVariantNumeric: 'tabular-nums' }}>
+                {fmtClock(match.start_ms)}–{fmtClock(match.end_ms)}
+              </span>
+              {' '}{match.event_summary || t('（无事件摘要）')}
+            </div>
+          ))}
         </div>
         {imported ? (
           <span style={{ flexShrink: 0, fontSize: 11.5, color: theme.textDim }}>{t('已在媒体池')}</span>
@@ -108,27 +189,56 @@ export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportD
         <div style={{ padding: '10px 12px', borderBottom: `0.5px solid ${theme.border}`, fontWeight: 600, fontSize: 13 }}>
           {t('项目素材库')}
         </div>
-        <div style={{ padding: '8px 12px', display: 'flex', gap: 8 }}>
+        <div style={{ padding: '8px 12px 0', display: 'flex', gap: 8 }}>
+          <div role="group" aria-label={t('检索方式')} style={{
+            display: 'flex', flexShrink: 0, border: `0.5px solid ${theme.border}`,
+            borderRadius: 4, overflow: 'hidden',
+          }}>
+            {(['keyword', 'semantic'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => switchMode(value)}
+                style={{
+                  border: 'none', padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                  background: mode === value ? theme.accent : 'none',
+                  color: mode === value ? theme.onAccent : theme.text,
+                }}
+              >{value === 'keyword' ? t('关键词') : t('语义')}</button>
+            ))}
+          </div>
           <input
             value={query}
-            placeholder={t('搜索标题、项目或文件名')}
+            placeholder={mode === 'semantic'
+              ? t('描述画面内容，如「颁奖仪式」「观众欢呼」')
+              : t('搜索标题、项目或文件名')}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Enter') { setPage(1); setSearch(query.trim()); } }}
+            onKeyDown={(event) => { if (event.key === 'Enter') runSearch(); }}
             style={{
-              flex: 1, background: theme.bg, border: `0.5px solid ${theme.border}`,
+              flex: 1, minWidth: 0, background: theme.bg, border: `0.5px solid ${theme.border}`,
               borderRadius: 4, padding: '6px 8px', color: theme.text, fontSize: 12,
             }}
           />
-          <button type="button" onClick={() => { setPage(1); setSearch(query.trim()); }} style={{
+          <button type="button" onClick={() => runSearch()} style={{
             border: `0.5px solid ${theme.border}`, background: 'none', color: theme.text,
             borderRadius: 4, padding: '6px 10px', fontSize: 12, cursor: 'pointer',
           }}>{t('搜索')}</button>
+        </div>
+        <div style={{ padding: '5px 12px 8px', fontSize: 11, color: theme.textDim, minHeight: 14 }}>
+          {mode === 'semantic'
+            ? t('按画面内容检索，只覆盖已解读的素材；结果按相似度排序')
+            : t('按标题、项目或文件名匹配')}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 140 }}>
           {loading && <div style={{ padding: 16, fontSize: 12, color: theme.textDim, textAlign: 'center' }}>{t('搜索中…')}</div>}
           {!loading && error && <div style={{ padding: 16, fontSize: 12, color: theme.accent, textAlign: 'center' }}>{error}</div>}
           {!loading && !error && items && items.length === 0 && (
-            <div style={{ padding: 16, fontSize: 12, color: theme.textDim, textAlign: 'center' }}>{t('没有符合条件的视频素材')}</div>
+            <div style={{ padding: 16, fontSize: 12, color: theme.textDim, textAlign: 'center' }}>
+              {resultMode === 'semantic'
+                ? t('没有语义匹配的素材；未解读的素材请用关键词搜索')
+                : t('没有符合条件的视频素材')}
+            </div>
           )}
           {!loading && !error && items?.map(row)}
         </div>
@@ -137,11 +247,24 @@ export function LibraryImportDialog({ fps, onAddAsset, onClose }: LibraryImportD
             border: `0.5px solid ${theme.border}`, background: 'none', color: theme.text,
             borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: page <= 1 ? 'default' : 'pointer',
           }}>{t('上一页')}</button>
-          <span style={{ fontSize: 11.5, color: theme.textDim, flex: 1, textAlign: 'center' }}>{page} / {pages}</span>
+          <span style={{ fontSize: 11.5, color: theme.textDim, flex: 1, textAlign: 'center' }}>
+            {page} / {pages} · {t('共 {n} 条', { n: total })}
+          </span>
           <button type="button" disabled={page >= pages} onClick={() => setPage((value) => Math.min(pages, value + 1))} style={{
             border: `0.5px solid ${theme.border}`, background: 'none', color: theme.text,
             borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: page >= pages ? 'default' : 'pointer',
           }}>{t('下一页')}</button>
+          <button
+            type="button"
+            disabled={loading || pending.length === 0}
+            onClick={importAllOnPage}
+            style={{
+              border: `0.5px solid ${theme.border}`, background: 'none', color: theme.text,
+              borderRadius: 4, padding: '4px 10px', fontSize: 12,
+              cursor: loading || pending.length === 0 ? 'default' : 'pointer',
+              opacity: loading || pending.length === 0 ? 0.5 : 1,
+            }}
+          >{t('本页全部导入（{n}）', { n: pending.length })}</button>
           <button type="button" onClick={onClose} style={{
             border: `0.5px solid ${theme.border}`, background: 'none', color: theme.text,
             borderRadius: 4, padding: '4px 14px', fontSize: 12, cursor: 'pointer',

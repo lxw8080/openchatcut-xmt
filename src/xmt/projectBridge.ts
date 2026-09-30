@@ -34,7 +34,23 @@ export interface XmtLibraryAsset {
   stream_url: string;
   thumb_url: string | null;
   already_imported: boolean;
+  /** 仅语义模式：素材里最高分那一段的相似度。 */
+  score?: number | null;
+  /** 仅语义模式：这条素材里命中的分段（按分数降序，最多 3 段）。 */
+  matches?: XmtLibraryMatch[];
 }
+
+/** 语义导入时，素材内命中的一段。 */
+export interface XmtLibraryMatch {
+  video_segment_id: number | null;
+  start_ms: number | null;
+  end_ms: number | null;
+  event_summary: string | null;
+  score: number | null;
+}
+
+/** keyword：标题 / 项目 / 文件名子串；semantic：按画面内容语义检索（只覆盖已解读素材）。 */
+export type XmtLibrarySearchMode = 'keyword' | 'semantic';
 
 interface XmtEnvelope<T> {
   success?: boolean;
@@ -182,22 +198,36 @@ export async function fetchXmtLibraryAssets(params: {
   page?: number;
   perPage?: number;
   query?: string;
-}): Promise<{ items: XmtLibraryAsset[]; page: number; pages: number; total: number }> {
+  mode?: XmtLibrarySearchMode;
+}): Promise<{
+  items: XmtLibraryAsset[];
+  page: number;
+  pages: number;
+  total: number;
+  mode: XmtLibrarySearchMode;
+}> {
   const host = requireXmtHost();
   const search = new URLSearchParams();
   if (params.page) search.set('page', String(params.page));
   if (params.perPage) search.set('per_page', String(params.perPage));
   if (params.query) search.set('q', params.query);
+  // 只在真要语义时才发这个参数：关键词模式的请求与加入语义之前逐字相同。
+  if (params.mode === 'semantic') search.set('mode', 'semantic');
   const response = await fetch(`${host.projectLibraryUrl}?${search.toString()}`, { cache: 'no-store' });
   if (!response.ok) {
-    throw new Error(`项目素材库加载失败（HTTP ${response.status}）。`);
+    // 语义检索失败时宿主回 502 + 可读原因（embedding 服务不可达等），原样给人看。
+    const reason = await errorMessage(response);
+    throw new Error(reason || `项目素材库加载失败（HTTP ${response.status}）。`);
   }
-  const body = await response.json() as XmtEnvelope<{ items?: XmtLibraryAsset[]; page?: number; pages?: number; total?: number }>;
+  const body = await response.json() as XmtEnvelope<{
+    items?: XmtLibraryAsset[]; page?: number; pages?: number; total?: number; mode?: string;
+  }>;
   return {
     items: body.data?.items ?? [],
     page: body.data?.page ?? 1,
     pages: body.data?.pages ?? 1,
     total: body.data?.total ?? 0,
+    mode: body.data?.mode === 'semantic' ? 'semantic' : 'keyword',
   };
 }
 
