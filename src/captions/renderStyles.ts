@@ -144,6 +144,31 @@ function normalizedTextAlign(
   return value === 'left' || value === 'right' || value === 'center' ? value : fallback;
 }
 
+// xmt：字体族名必须加引号再进 CSS。不加引号时族名只能是一串 CSS 标识符，
+// 用户上传的字体常带数字词（`Alibaba PuHuiTi 2.0`），整条 font-family 声明会被
+// 浏览器直接丢弃，预览与导出都回落到父级字体且不报错。通用族关键字加了引号就
+// 不再是关键字，所以原样保留；已经带引号的片段也原样保留。
+const GENERIC_FONT_KEYWORDS = new Set([
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+  'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'emoji', 'math',
+  'fangsong', '-apple-system', 'blinkmacsystemfont', 'inherit', 'initial', 'unset',
+]);
+
+/** `Alibaba PuHuiTi 2.0, serif` → `"Alibaba PuHuiTi 2.0", serif`. */
+export function cssFontFamilyList(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const parts = value.match(/\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*|[^,]+/g) ?? [];
+  return parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      if (/^(["']).*\1$/.test(part)) return part;
+      if (GENERIC_FONT_KEYWORDS.has(part.toLowerCase())) return part;
+      return `"${part.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    })
+    .join(', ');
+}
+
 /** Serializable typography consumed by both the editor overlay and Remotion. */
 export function captionTypographyStyle(
   preset: CaptionStyle,
@@ -155,7 +180,7 @@ export function captionTypographyStyle(
     preset.underline ? 'underline' : '',
     preset.strike ? 'line-through' : '',
   ].filter(Boolean).join(' ') || 'none';
-  const fontFamily = preset.fontFamily.trim() || 'system-ui';
+  const fontFamily = cssFontFamilyList(preset.fontFamily) || 'system-ui';
   return {
     fontFamily: `${fontFamily}, system-ui, sans-serif`,
     fontSize: nonNegativeNumber(height) * positiveNumber(preset.fontSize, 0.04),

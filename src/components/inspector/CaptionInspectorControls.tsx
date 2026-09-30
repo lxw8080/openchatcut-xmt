@@ -7,6 +7,8 @@ import {
   captionPreviewTextPatch,
 } from '../../captions/captionPreviewTarget';
 import { captionPreviewTextColor, shadowBlurSize } from '../../captions/renderStyles';
+import { captionFontOptions } from '../../captions/captionFontOptions';
+import { useXmtUploadedFontFamilies } from '../../captions/customFonts';
 import type { SelectedCaptionInspector } from '../../captions/captionSelection';
 import type { CaptionLayout, CaptionsData } from '../../captions/types';
 import { useT } from '../../i18n/locale';
@@ -92,6 +94,10 @@ function CaptionColorInput({ label, value, fallback, onChange }: {
 export function CaptionInspectorControls({ selection, onUpdate }: CaptionInspectorControlsProps) {
   const t = useT();
   const { captions, target } = selection;
+  const uploadedFonts = useXmtUploadedFontFamilies();
+  const fontOptions = captionFontOptions(
+    FONT_CATALOG.map((font) => font.family), uploadedFonts, target.preset.fontFamily,
+  );
   const layout = target.layout;
   const patchLayout = (patch: CaptionLayout) => onUpdate(captionPreviewLayoutPatch(captions, target, {
     anchor: layout?.anchor ?? 'bottom-center',
@@ -152,7 +158,13 @@ export function CaptionInspectorControls({ selection, onUpdate }: CaptionInspect
         <span>{t('字体')}</span>
         <select className="cc-insp-select cc-caption-font-select" value={target.preset.fontFamily}
           onChange={(event) => patchStyle({ fontFamily: event.target.value })}>
-          {FONT_CATALOG.map((font) => <option key={font.family} value={font.family}>{font.family}</option>)}
+          {fontOptions.current !== null && <option value={fontOptions.current}>{fontOptions.current}</option>}
+          {fontOptions.catalog.map((family) => <option key={family} value={family}>{family}</option>)}
+          {fontOptions.uploaded.length > 0 && (
+            <optgroup label={t('已上传字体')}>
+              {fontOptions.uploaded.map((family) => <option key={family} value={family}>{family}</option>)}
+            </optgroup>
+          )}
         </select>
       </label>
       <RangeRow label={t('字号')} value={target.preset.fontSize} min={0.02} max={0.14} step={0.001}

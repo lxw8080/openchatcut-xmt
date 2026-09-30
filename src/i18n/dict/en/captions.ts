@@ -170,4 +170,5 @@ export default {
   '字幕文件没有可用内容': 'The caption file has no usable content',
   '无法创建字幕轨道': 'Could not create a caption track',
   '读取字幕文件失败': 'Failed to read the caption file',
+  '已上传字体': 'Uploaded fonts',
 } as Record<string, string>;
