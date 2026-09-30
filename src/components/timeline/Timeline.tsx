@@ -2,6 +2,7 @@ import { theme, themeAlpha } from '../../theme';
 import {
   TRANSITION_LABELS, captionsOnTrack, selectedIdsOf, trackAlias, trackKind,
 } from '../../editor/types';
+import { laneMoveOrder } from '../../editor/reducerTimelineHelpers';
 import { ClipContextMenu } from './ClipContextMenu';
 import { Icon } from '../icons';
 import { CaptionStyleMenu } from '../../captions/CaptionStyleMenu';
@@ -400,7 +401,7 @@ The playhead line/triangle is pointerEvents:none, click it to click the ruler - 
         // video order counts from the bottom lane, caption/audio from the top
         const kindGroup = trackIds.filter((id) => trackKind(state, id) === kind);
         const groupIndex = kindGroup.indexOf(trackId);
-        const orderFor = (withinGroupIndex: number) => (kind === 'video' ? kindGroup.length - withinGroupIndex : withinGroupIndex);
+        const orderFor = (withinGroupIndex: number) => laneMoveOrder(kind, kindGroup.length, withinGroupIndex);
         return (
           <TrackContextMenu
             kind={kind}
