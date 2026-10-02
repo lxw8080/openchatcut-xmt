@@ -24,8 +24,10 @@ export interface XmtCandidate {
 /** 项目素材库分页行（GET projectLibraryUrl）。 */
 export interface XmtLibraryAsset {
   id: number;
+  /** 只有图片列表回 `image`；视频行缺席这个键。 */
+  media?: XmtLibraryMedia;
   title: string;
-  source_filename: string;
+  source_filename: string | null;
   sport: string | null;
   status: string;
   duration_ms: number | null;
@@ -51,6 +53,9 @@ export interface XmtLibraryMatch {
 
 /** keyword：标题 / 项目 / 文件名子串；semantic：按画面内容语义检索（只覆盖已解读素材）。 */
 export type XmtLibrarySearchMode = 'keyword' | 'semantic';
+
+/** 项目素材库的两个类目：视频（`video_assets`）与图片（`image_assets`）。 */
+export type XmtLibraryMedia = 'video' | 'image';
 
 interface XmtEnvelope<T> {
   success?: boolean;
@@ -199,6 +204,7 @@ export async function fetchXmtLibraryAssets(params: {
   perPage?: number;
   query?: string;
   mode?: XmtLibrarySearchMode;
+  media?: XmtLibraryMedia;
 }): Promise<{
   items: XmtLibraryAsset[];
   page: number;
@@ -213,6 +219,8 @@ export async function fetchXmtLibraryAssets(params: {
   if (params.query) search.set('q', params.query);
   // 只在真要语义时才发这个参数：关键词模式的请求与加入语义之前逐字相同。
   if (params.mode === 'semantic') search.set('mode', 'semantic');
+  // 同理：视频列表的请求不带 media，与加入图片之前逐字相同。图片只有关键词检索。
+  if (params.media === 'image') search.set('media', 'image');
   const response = await fetch(`${host.projectLibraryUrl}?${search.toString()}`, { cache: 'no-store' });
   if (!response.ok) {
     // 语义检索失败时宿主回 502 + 可读原因（embedding 服务不可达等），原样给人看。

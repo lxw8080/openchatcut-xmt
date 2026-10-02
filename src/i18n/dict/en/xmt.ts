@@ -38,6 +38,10 @@ export default {
   '没有语义匹配的素材；未解读的素材请用关键词搜索': 'No semantic matches. Use keyword search for assets that have not been analyzed.',
   '共 {n} 条': '{n} total',
   '本页全部导入（{n}）': 'Import all on page ({n})',
+  '素材类型': 'Asset type',
+  '搜索标题、图中文字或项目': 'Search titles, text in image or projects',
+  '按标题、摘要、图中文字或项目匹配；导入后默认 5 秒': 'Matches titles, summaries, text in image or projects; imported images default to 5 seconds',
+  '没有符合条件的图片素材': 'No matching image assets',
   // ── 导出：宿主没有随附 server，成片只走浏览器 ──
   '浏览器 WebCodecs 导出': 'Browser WebCodecs export',
   '浏览器导出不可用：{reason}。可改用「使用本机导出」': 'Browser export unavailable: {reason}. Try "Local export" instead.',
