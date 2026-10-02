@@ -17,6 +17,24 @@ export function xmtClipMeta(item: TimelineItem): XmtClipMeta | null {
   return meta;
 }
 
+/** Source image ids belong to the current URL; retain the shot's editorial metadata. */
+export function xmtPropsAfterImageRelink(
+  props: TimelineItem['props'],
+  previousSrc: string | undefined,
+  src: string,
+): TimelineItem['props'] {
+  const meta = props?._xmt;
+  if (previousSrc === src || !meta || typeof meta !== 'object' || Array.isArray(meta)) return props;
+  const oldMeta = meta as Record<string, unknown>;
+  if (!('imageAssetId' in oldMeta) && !('stillId' in oldMeta)) return props;
+  const nextMeta = { ...oldMeta };
+  delete nextMeta.imageAssetId;
+  delete nextMeta.stillId;
+  const match = src.match(/\/library\/api\/images\/(\d+)\/(?:file|thumbnail)(?:[?#].*)?$/);
+  if (match) nextMeta.imageAssetId = Number(match[1]);
+  return { ...props, _xmt: nextMeta };
+}
+
 /** 这一条是不是 XMT 的图文卡（截图 / 数据卡 / 比分条这类「库里按定义不存在」的画面）。
  *
  * 图文卡是**画面内容**，不是字幕：关掉字幕是不想要逐句念白的字幕条，不是不想要记分牌。

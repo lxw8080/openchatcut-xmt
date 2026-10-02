@@ -13,6 +13,7 @@ import { normalizeSha256Hash } from '../../shared/content-hash.js';
 import { applyRippleShifts, linkedItemIds, moveItemWithGroups, retimeItemWithGroups } from './linkGroups';
 import { clampMoveDeltaToTrackGaps } from './trackCollision';
 import type { Action } from './reducerActions';
+import { xmtPropsAfterImageRelink } from '../xmt/clipMeta';
 import { contiguousFollowers, EMPTY_CURVE, isRelinkableMediaKind, lockedItem, relinkTiming, retimePatchForItem, type RelinkableTimelineItem } from './reducerTimelineHelpers';
 
 export function applyClipAction(s: TimelineState, a: Action): TimelineState | undefined {
@@ -111,6 +112,7 @@ export function applyClipAction(s: TimelineState, a: Action): TimelineState | un
         ...sourceIndependent,
         ...timing,
         src: a.src,
+        props: xmtPropsAfterImageRelink(target.props, target.src, a.src),
         name: a.name ?? target.name,
         width: a.width ?? target.width,
         height: a.height ?? target.height,

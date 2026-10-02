@@ -12,6 +12,7 @@ import { newTranscriptGeneration } from '../transcript/identity';
 import type { AnyAction, ProjectAction } from './reducerActions';
 import { isRelinkableMediaKind, relinkTiming, type RelinkableTimelineItem } from './reducerTimelineHelpers';
 import { reduce } from './reducerTimeline';
+import { xmtPropsAfterImageRelink } from '../xmt/clipMeta';
 
 // ── project reducer (routes per-timeline actions to the active timeline) ───
 export const maxOrder = (p: ProjectDoc) => p.timelines.reduce((m, t) => Math.max(m, t.order), -1);
@@ -146,6 +147,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
         const replacement = {
           ...asset,
           src: a.src,
+          props: xmtPropsAfterImageRelink(asset.props, asset.src, a.src),
           name: a.name ?? asset.name,
           durationInFrames: a.durationInFrames ?? asset.durationInFrames,
           width: a.width ?? asset.width,
@@ -190,6 +192,7 @@ export function projectReduce(p: ProjectDoc, a: AnyAction): ProjectDoc {
             ...timing,
             sourceAssetId: asset.id,
             src: a.src,
+            props: xmtPropsAfterImageRelink(item.props, item.src, a.src),
             sourceRevision: nextAsset.sourceRevision,
             sourceContentHash: nextAsset.sourceContentHash,
             sourceFilename: 'sourceFilename' in a ? a.sourceFilename : item.sourceFilename,

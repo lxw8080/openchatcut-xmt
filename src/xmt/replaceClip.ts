@@ -15,7 +15,7 @@
 // 4. **派发前用 reducer 同一份判据预检重叠**：reducer 静默退回的状态，这里必须先说出来。
 import type { MediaAsset, TimelineItem, TimelineState } from '../editor/types';
 import { introducesTrackOverlap } from '../editor/trackCollision';
-import { xmtClipMeta } from './clipMeta';
+import { xmtClipMeta, xmtPropsAfterImageRelink } from './clipMeta';
 import type { XmtCandidate } from './projectBridge';
 
 /** 与 XMT editor_bridge.BACKGROUND_FILL_STRENGTH 同值（blur 画幅填充的衬底强度）。 */
@@ -98,9 +98,10 @@ export function planClipReplacement(
       } as MediaAsset;
   const sourceAssetId = existing?.id ?? poolAsset?.id;
 
-  const meta = xmtClipMeta(item);
-  const { color: _placeholderColor, ...keptProps } = (item.props ?? {}) as Record<string, unknown>;
-  const props = item.kind === 'solid' ? keptProps : { ...(item.props ?? {}) };
+  const sourceProps = xmtPropsAfterImageRelink(item.props, item.src, candidate.stream_url);
+  const meta = xmtClipMeta({ ...item, props: sourceProps });
+  const { color: _placeholderColor, ...keptProps } = (sourceProps ?? {}) as Record<string, unknown>;
+  const props = item.kind === 'solid' ? keptProps : { ...(sourceProps ?? {}) };
   const base: Record<string, unknown> = { ...item };
   for (const field of SOURCE_BOUND_FIELDS) delete base[field];
 
