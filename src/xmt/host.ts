@@ -8,6 +8,7 @@ export interface XmtEditorHost {
   csrfToken: string;
   projectUrl: string;
   reviewCommentsUrl: string;
+  compositionReviewUrl: string;
   projectMetaUrl: string;
   projectLibraryUrl: string;
   candidatesUrl: (segmentId: string) => string;
@@ -29,6 +30,7 @@ function normalize(value: Partial<XmtEditorHost> | undefined): XmtEditorHost | n
     csrfToken: value.csrfToken,
     projectUrl: value.projectUrl,
     reviewCommentsUrl: value.reviewCommentsUrl ?? '',
+    compositionReviewUrl: value.compositionReviewUrl ?? '',
     projectMetaUrl: value.projectMetaUrl ?? '',
     projectLibraryUrl: value.projectLibraryUrl ?? '',
     candidatesUrl: typeof value.candidatesUrl === 'function' ? value.candidatesUrl : () => '',

@@ -12,6 +12,7 @@ import {
   type ReviewComment,
 } from './reviewModel';
 import { loadReviewComments, saveReviewComments } from './reviewStore';
+import { CompositionReview } from './CompositionReview';
 
 interface ReviewCommentsButtonProps {
   projectId: string;
@@ -157,6 +158,11 @@ function ReviewPanel(props: ReviewPanelProps) {
     <div ref={panelRef} role="dialog" aria-label={t('审阅评论')}
       style={props.target ? { ...popover, position: 'fixed', left: position.left, top: position.top, right: 'auto' } : popover}>
       <PanelHeader onClose={props.onClose} />
+      <CompositionReview timelineId={props.timelineId} state={props.state} onSeek={props.onSeek} />
+      {props.comments.some((comment) => comment.id.startsWith('xmt-review-')) &&
+        <p style={{ margin: '8px 12px', color: theme.textDim, fontSize: 11 }}>
+          下方包含生成时的审阅记录；编辑后的问题请运行成片检查。
+        </p>}
       <AddCommentForm text={text} setText={setText} busy={props.busy} onAdd={addComment} />
       <CommentList {...props} comments={visible} replyingTo={replyingTo} reply={reply}
         setReply={setReply} setReplyingTo={setReplyingTo} addReply={addReply} />
