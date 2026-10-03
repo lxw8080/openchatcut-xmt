@@ -13,6 +13,7 @@ import {
 } from './reviewModel';
 import { loadReviewComments, saveReviewComments } from './reviewStore';
 import { CompositionReview } from './CompositionReview';
+import { xmtHost } from '../xmt/host';
 
 interface ReviewCommentsButtonProps {
   projectId: string;
@@ -118,6 +119,8 @@ function ReviewPanel(props: ReviewPanelProps) {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [reply, setReply] = useState('');
   const [position, setPosition] = useState({ left: 8, top: 8 });
+  // 宿主没提供成片检查接口时整块不出现：按钮点了只会报错。
+  const compositionReviewEnabled = Boolean(xmtHost()?.compositionReviewUrl);
   const visible = useMemo(
     () => [...props.comments].sort((a, b) => Number(a.resolved) - Number(b.resolved) || b.createdAt - a.createdAt),
     [props.comments],
@@ -158,8 +161,9 @@ function ReviewPanel(props: ReviewPanelProps) {
     <div ref={panelRef} role="dialog" aria-label={t('审阅评论')}
       style={props.target ? { ...popover, position: 'fixed', left: position.left, top: position.top, right: 'auto' } : popover}>
       <PanelHeader onClose={props.onClose} />
-      <CompositionReview timelineId={props.timelineId} state={props.state} onSeek={props.onSeek} />
-      {props.comments.some((comment) => comment.id.startsWith('xmt-review-')) &&
+      {compositionReviewEnabled &&
+        <CompositionReview timelineId={props.timelineId} state={props.state} onSeek={props.onSeek} />}
+      {compositionReviewEnabled && props.comments.some((comment) => comment.id.startsWith('xmt-review-')) &&
         <p style={{ margin: '8px 12px', color: theme.textDim, fontSize: 11 }}>
           下方包含生成时的审阅记录；编辑后的问题请运行成片检查。
         </p>}
