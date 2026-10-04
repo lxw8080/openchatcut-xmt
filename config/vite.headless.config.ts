@@ -45,7 +45,7 @@ export default defineConfig({
     outDir: 'dist-headless',
     emptyOutDir: true,
     target: 'node24',
-    minify: false,
+    minify: true,
     sourcemap: false,
     rolldownOptions: {
       output: { format: 'esm', entryFileNames: 'editor-worker.mjs', codeSplitting: false },
