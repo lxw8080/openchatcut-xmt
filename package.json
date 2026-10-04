@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc -b && vite build --config config/vite.config.ts",
+    "build:headless": "vite build --config \"$PWD/config/vite.headless.config.ts\"",
     "dev": "vite --config config/vite.config.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b"
