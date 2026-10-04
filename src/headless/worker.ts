@@ -9,7 +9,7 @@
  *   ping                      -> {"pong": true}
  *   capabilities              -> {protocol, node, tools, read_tools, write_tools, build}
  *   tool_schemas              -> {schemas}
- *   apply {doc, calls}        -> BatchOutcome (atomic; doc unchanged unless ok)
+ *   apply {doc, calls, templates?} -> BatchOutcome (atomic; doc unchanged unless ok)
  *   validate {doc}            -> {ok, doc?}
  */
 import * as readline from 'node:readline';
@@ -25,7 +25,7 @@ import {
 
 declare const __HEADLESS_BUILD__: { commit: string; builtAt: string } | undefined;
 
-const PROTOCOL = 1;
+const PROTOCOL = 2;
 const out = process.stdout;
 // Tool executors occasionally console.log; keep stdout a clean protocol channel.
 console.log = (...args: unknown[]) => console.error(...args);
@@ -59,7 +59,7 @@ async function handle(method: string, params: Record<string, unknown>): Promise<
     case 'apply': {
       const calls = Array.isArray(params.calls) ? (params.calls as ToolCall[]) : [];
       if (!calls.length) throw Object.assign(new Error('calls_required'), { code: 'invalid_params' });
-      return runBatch(params.doc, calls);
+      return runBatch(params.doc, calls, params.templates);
     }
     default:
       throw Object.assign(new Error(`unknown_method:${method}`), { code: 'method_not_found' });

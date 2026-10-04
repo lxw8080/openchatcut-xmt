@@ -13,13 +13,23 @@
  * - Only whitelisted tools are reachable (HEADLESS_TOOLS). Tools that need a
  *   browser (media import, generation, export, IndexedDB-backed stores) are
  *   not exposed.
+ * - Motion-graphic templates come only from the caller (XMT's own template
+ *   files); the headless session has no template store of its own, and model
+ *   generated MG code is never reachable here.
  */
+import type { Tpl } from '../types';
 import { makeDraft } from '../editor/store';
 import type { ProjectDoc } from '../editor/projectTypes';
 import { runProjectMigrations } from '../persist/migrations';
 
 /** Tools that only read or rewrite the project document. */
-export const HEADLESS_READ_TOOLS = ['read_timeline', 'read_captions'] as const;
+export const HEADLESS_READ_TOOLS = [
+  'read_timeline',
+  'read_captions',
+  'list_templates',
+  'search_templates',
+  'browse_library',
+] as const;
 export const HEADLESS_WRITE_TOOLS = [
   'edit_item',
   'split_item',
@@ -31,6 +41,8 @@ export const HEADLESS_WRITE_TOOLS = [
   'edit_captions',
   'update_item_props',
   'manage_markers',
+  'manage_timelines',
+  'add_motion_graphic',
 ] as const;
 export const HEADLESS_TOOLS: readonly string[] = [...HEADLESS_READ_TOOLS, ...HEADLESS_WRITE_TOOLS];
 
@@ -83,22 +95,36 @@ function resultError(result: unknown): string | undefined {
   return undefined;
 }
 
-function headlessContext(engine: ReturnType<typeof makeDraft>) {
+function asTemplates(input: unknown): Tpl[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((t): t is Tpl => {
+    if (!t || typeof t !== 'object') return false;
+    const r = t as Record<string, unknown>;
+    return typeof r.id === 'string' && typeof r.name === 'string' && typeof r.code === 'string'
+      && typeof r.category === 'string' && typeof r.durationInFrames === 'number';
+  });
+}
+
+function headlessContext(engine: ReturnType<typeof makeDraft>, templates: Tpl[]) {
   return {
     commands: engine.commands,
     getState: engine.getState,
     getDoc: engine.getDoc,
     getCreativeMode: () => null,
-    templates: [],
+    templates,
     audio: [],
     getApprovalMode: () => 'auto',
   };
 }
 
-export async function runBatch(input: unknown, calls: ToolCall[]): Promise<BatchOutcome> {
+export async function runBatch(
+  input: unknown,
+  calls: ToolCall[],
+  templates?: unknown,
+): Promise<BatchOutcome> {
   const base = loadDoc(input);
   const engine = makeDraft(base);
-  const ctx = headlessContext(engine);
+  const ctx = headlessContext(engine, asTemplates(templates));
   const exec = await loadExecutor();
   const results: CallOutcome[] = [];
   for (const call of calls) {
