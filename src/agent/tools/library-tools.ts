@@ -45,7 +45,8 @@ export async function execLibraryTool(name: string, args: Args, ctx: AgentContex
     }
     return {
       mode: 'detail',
-      item: { ...compact(hit), usage: hit.usage },
+      item: { ...compact(hit), usage: hit.usage,
+        ...(hit.properties ? { properties: hit.properties } : {}) },
     };
   }
 

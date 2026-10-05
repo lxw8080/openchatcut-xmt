@@ -6,7 +6,7 @@ export const EDIT_ITEM_TOOL_SCHEMAS: AgentToolSchema[] = [
     description:
       'Unified item-level operations across video, image, audio, gif, svg, motion-graphic, text, solid, effect, and transition types. '
       + 'adds place library items (effect/transition/zoom/MG/SFX), a POOL asset as a clip (type=video|image|gif|svg|audio, assetId=…), OR authored clips without assetId: type=text (text/fontSize/color/fontWeight/align?) or type=solid (color?). '
-      + 'updates move/trim/retime by itemId|id — NEVER pass assetId on update (rejected). To replace media: one batch deletes:[{id}] + adds:[{type,assetId,fromFrame,durationInFrames,trackId,…copied layout}]. '
+      + 'Media updates move/trim/retime by itemId|id — NEVER pass assetId on media update (rejected); effect updates may swap an FX assetId. To replace media: two calls in one edit_batch, first deletes:[{type,id}], then adds:[{type,assetId,fromFrame,durationInFrames,trackId}]; update layout after creation. '
       + 'fromFrame is the canonical timing field (startFrame is accepted as an alias). Unknown fields reject the entire call with "unknown field" + Did you mean. '
       + 'Entries run in adds→updates→deletes order against one private draft; only a fully valid/applied draft is published once. Any validator or draft-apply failure discards it with no partial timeline state. '
       + 'validateOnly runs that same sequential draft without publishing. Mutating calls then go through propose→apply. split_item cuts clips.',

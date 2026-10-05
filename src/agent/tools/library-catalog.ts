@@ -12,6 +12,7 @@ import {
   type ZoomShape,
 } from '../../editor/types';
 import { CUSTOM_FX, FX_EFFECTS, FX_IDS, LUT_EFFECTS, LUT_IDS } from '../../gl/fx/effects';
+import type { FxDef } from '../../gl/fx/uniforms';
 import { listCustomTransitions } from '../../gl/customTransitions';
 import { listCustomZooms } from '../../editor/customZooms';
 import type { Tpl } from '../../types';
@@ -41,6 +42,23 @@ export interface LibraryItem {
   group?: string;
   /** Placement guidance for edit_item. */
   usage?: string;
+  /** Parameters from the same definitions used by the renderer and inspector. */
+  properties?: Array<{
+    key: string;
+    type: 'number' | 'color';
+    default: number | number[];
+    min: number;
+    max: number;
+    step?: number;
+    components?: number;
+  }>;
+}
+
+function effectProperties(def: FxDef): NonNullable<LibraryItem['properties']> {
+  return def.props.map((p) => p.kind === 'color'
+    ? { key: p.key, type: 'color', default: [...p.default], min: 0, max: 1, components: 3 }
+    : { key: p.key, type: 'number', default: p.default, min: p.min, max: p.max,
+      ...(p.step !== undefined ? { step: p.step } : {}) });
 }
 
 /** Map TransitionType → builtin:tr-* asset id. */
@@ -104,6 +122,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       category: 'luts',
       description: d.desc,
       usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${d.id}",propertyOverrides:{intensity:1}}]`,
+      properties: effectProperties(d),
     });
   }
 
@@ -113,7 +132,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       name: ZOOM_SHAPE_LABELS[shape],
       category: 'zoom',
       description: ZOOM_DESC[shape] ?? shape,
-      usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${zoomLibraryId(shape)}"}] — expands to builtin:zoom shape=${shape}`,
+      usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${zoomLibraryId(shape)}",propertyOverrides:{magnification:1.5,focalPointX:0.5,focalPointY:0.5}}] — expands to builtin:zoom shape=${shape}; focal points are normalized 0..1`,
     });
   }
 
@@ -126,6 +145,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       category: 'fx',
       description: d.desc,
       usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${d.id}",propertyOverrides:{...}}]`,
+      properties: effectProperties(d),
     });
   }
 
@@ -187,6 +207,7 @@ export function buildLibraryItems(templates: Tpl[]): LibraryItem[] {
       category: d.cube ? 'luts' : 'fx',
       description: d.desc,
       usage: `edit_item adds:[{type:"effect",targetItemId:"<clip>",assetId:"${d.id}",propertyOverrides:{...}}]`,
+      properties: effectProperties(d),
     });
   }
   for (const t of listCustomTransitions()) {
