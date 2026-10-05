@@ -41,6 +41,8 @@ interface GlTransitionProps {
   fit: AspectFit;
   outgoingBackgroundFill?: boolean;
   incomingBackgroundFill?: boolean;
+  outgoingOpaqueBackdrop?: boolean;
+  incomingOpaqueBackdrop?: boolean;
   previewTargetId?: string;
   onReadyChange?: (ready: boolean) => void;
   onPreviewStatus?: SelectedPreviewStatusListener;
@@ -75,6 +77,7 @@ function drawMediaFrame(
   item: TimelineItem,
   backgroundFill: boolean,
   localFrame: number,
+  opaqueBackdrop = false,
 ): void {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.save();
@@ -82,13 +85,20 @@ function drawMediaFrame(
   // The blur companion stays on the full canvas, like BackgroundFillLayer.
   const width = ctx.canvas.width;
   const height = ctx.canvas.height;
-  if (backgroundFill) {
+  if (opaqueBackdrop) {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+  }
+  if (backgroundFill || opaqueBackdrop) {
     const backing = backgroundFillAppearanceFor(item, width, height);
     ctx.save();
     ctx.filter = backgroundFillFilter(backing, item.filters);
     drawPlaced(ctx, el, 'cover', backing.overscanScale);
     ctx.restore();
   }
+  // Primary photos retain an opaque bed through their foreground fade. For
+  // other clips opacity is still applied once after the effect graph.
+  if (opaqueBackdrop) ctx.globalAlpha = clipOpacityAt(item, localFrame);
 
   const appearance = appearanceAt(item, localFrame, false);
   const geometry = clipGeometryAt(item, localFrame);
@@ -135,7 +145,7 @@ function MediaSource({ item, trim, fit, elRef }: { item: TimelineItem; trim: num
   return <Video ref={elRef as React.MutableRefObject<HTMLVideoElement | null>} src={item.src!} trimBefore={trim} playbackRate={item.playbackRate ?? 1} muted style={style} />;
 }
 
-export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, outgoingBackgroundFill = false, incomingBackgroundFill = false, customFrag, customUniforms, previewTargetId, onPreviewStatus, onReadyChange }: GlTransitionProps) {
+export function GlTransition({ type, direction, L, windowStart, outgoing, incoming, trimOut, trimIn, width, height, fit, outgoingBackgroundFill = false, incomingBackgroundFill = false, outgoingOpaqueBackdrop = false, incomingOpaqueBackdrop = false, customFrag, customUniforms, previewTargetId, onPreviewStatus, onReadyChange }: GlTransitionProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -257,8 +267,8 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
         const incomingContext = staging.in.getContext('2d');
         if (!outgoingContext || !incomingContext) throw new Error('2d context unavailable');
         const absoluteFrame = windowStart + frame;
-        const outgoingOpacity = clipOpacityAt(outgoing, absoluteFrame - outgoing.startFrame);
-        const incomingOpacity = clipOpacityAt(incoming, absoluteFrame - incoming.startFrame);
+        const outgoingOpacity = outgoingOpaqueBackdrop ? 1 : clipOpacityAt(outgoing, absoluteFrame - outgoing.startFrame);
+        const incomingOpacity = incomingOpaqueBackdrop ? 1 : clipOpacityAt(incoming, absoluteFrame - incoming.startFrame);
         drawMediaFrame(
           outgoingContext,
           outgoingSource,
@@ -266,6 +276,7 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
           outgoing,
           outgoingBackgroundFill,
           absoluteFrame - outgoing.startFrame,
+          outgoingOpaqueBackdrop,
         );
         drawMediaFrame(
           incomingContext,
@@ -274,6 +285,7 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
           incoming,
           incomingBackgroundFill,
           absoluteFrame - incoming.startFrame,
+          incomingOpaqueBackdrop,
         );
         const transitionFrame = buildTransitionShaderFrame(def, {
           sequenceFrame: frame,
@@ -326,8 +338,8 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
       finish();
     };
   }, [
-    definitionKey, def, direction, fit, fps, frame, height, incoming, incomingBackgroundFill,
-    incomingEffects, L, onPreviewStatus, onReadyChange, outgoing, outgoingBackgroundFill, outgoingEffects,
+    definitionKey, def, direction, fit, fps, frame, height, incoming, incomingBackgroundFill, incomingOpaqueBackdrop,
+    incomingEffects, L, onPreviewStatus, onReadyChange, outgoing, outgoingBackgroundFill, outgoingOpaqueBackdrop, outgoingEffects,
     previewTargetId, staging, type, width, windowStart,
   ]);
 

@@ -233,15 +233,17 @@ export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, pr
   );
 }
 
-export function BackgroundFillLayer({ item, frameOffset, canvasW, canvasH, browserRenderer }: {
+export function BackgroundFillLayer({ item, frameOffset, canvasW, canvasH, browserRenderer, opaqueBackdrop = false }: {
   item: TimelineItem;
   frameOffset: number;
   canvasW: number;
   canvasH: number;
   browserRenderer: boolean;
+  opaqueBackdrop?: boolean;
 }) {
   const appearance = backgroundFillAppearanceFor(item, canvasW, canvasH);
-  const opacity = clipOpacityAt(item, useCurrentFrame() + frameOffset);
+  const frame = useCurrentFrame() + frameOffset;
+  const opacity = opaqueBackdrop ? 1 : clipOpacityAt(item, frame);
   const trimBefore = sourceFrameAt(item, frameOffset);
   const filters = item.filters;
   const style: CSSProperties = {
@@ -253,7 +255,8 @@ export function BackgroundFillLayer({ item, frameOffset, canvasW, canvasH, brows
   };
   const effect = firstGlEffect(item);
   return (
-    <AbsoluteFill aria-hidden style={{ opacity, overflow: 'hidden', pointerEvents: 'none' }}>
+    <AbsoluteFill aria-hidden style={{ opacity, background: opaqueBackdrop ? '#000' : undefined,
+      overflow: 'hidden', pointerEvents: 'none' }}>
       {effect
         ? <AbsoluteFill style={style}>
             <ClipFx item={item} fit="cover" width={canvasW} height={canvasH} frameOffset={frameOffset} />

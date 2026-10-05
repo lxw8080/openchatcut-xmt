@@ -5,7 +5,7 @@ import { GlTransition } from '../gl/GlTransition';
 import { ALL_FX, registerCustomFx } from '../gl/fx/effects';
 import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPreviewFallbackStatus } from '../gl/previewAdapter';
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
-import { captionsHiddenForRender, captionTrackEntries, CSS_TRANSITION_TYPES, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
+import { captionsHiddenForRender, captionTrackEntries, CSS_TRANSITION_TYPES, defaultTrackId, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
 import { isXmtGraphicCard } from '../xmt/clipMeta';
 import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
@@ -281,7 +281,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
   const sharedVisualIds = new Set(sharedVisualGroups.flatMap((group) => group.map((item) => item.id)));
 
   return (
-    <AbsoluteFill style={{ background: transparent ? undefined : GRID }}>
+    <AbsoluteFill style={{ background: transparent ? undefined : environment.isPlayer && !ordered.length ? GRID : '#000' }}>
       {staticPreviewStatuses.map((status) => (
         <SelectedPreviewStatusReporter
           key={`${status.kind}:${status.targetId}`}
@@ -319,6 +319,10 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           && !isXmtGraphicCard(item)
           && previewTextEditFields(item) !== null;
         const fillBackground = isBackgroundFillActive(state, item);
+        // A primary photo fades its foreground, not the entire composition.
+        // Nested timelines and overlay images retain their native alpha.
+        const opaqueBackdrop = !transparent && item.kind === 'image'
+          && item.track === defaultTrackId(state, 'video');
         const foreground = (
           <ClipWrapper item={item} frameOffset={-eb} hiddenByCaptions={hiddenByCaptions}>
             {(borderRadius) => item.kind === 'sequence'
@@ -341,8 +345,8 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         );
         const content = (
           <>
-            {fillBackground && <BackgroundFillLayer item={item} frameOffset={-eb} canvasW={state.width}
-              canvasH={state.height} browserRenderer={browserRenderer} />}
+            {(fillBackground || opaqueBackdrop) && <BackgroundFillLayer item={item} frameOffset={-eb} canvasW={state.width}
+              canvasH={state.height} browserRenderer={browserRenderer} opaqueBackdrop={opaqueBackdrop} />}
             {foreground}
           </>
         );
@@ -366,6 +370,8 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
             width={state.width} height={state.height} fit={fit}
             outgoingBackgroundFill={isBackgroundFillActive(state, w.outgoing)}
             incomingBackgroundFill={isBackgroundFillActive(state, w.incoming)}
+            outgoingOpaqueBackdrop={!transparent && w.outgoing.kind === 'image' && trackId === defaultTrackId(state, 'video')}
+            incomingOpaqueBackdrop={!transparent && w.incoming.kind === 'image' && trackId === defaultTrackId(state, 'video')}
             customFrag={w.customFrag} customUniforms={w.customUniforms}
             previewTargetId={w.previewTargetId} onPreviewStatus={w.previewTargetId ? onSelectedPreviewStatus : undefined}
             onReadyChange={(ready) => setGlWindowReady(w.key, ready)}
