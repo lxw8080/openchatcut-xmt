@@ -160,6 +160,8 @@ export interface TimelineItem extends TranscriptCarrier {
   sourceContentHash?: string;
   /** Nested sequence reference. Required when kind='sequence'; absent on legacy items. */
   timelineId?: string;
+  /** Composition viewport: preserve the child's pixel size inside its parent. */
+  sequenceFit?: 'native';
   /** Persistent multicam membership; copied by split so angle identity survives edits. */
   multicamGroupId?: string;
   multicamAngleId?: string;

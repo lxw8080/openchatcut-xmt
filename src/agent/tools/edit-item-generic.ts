@@ -20,7 +20,7 @@ export { validateMediaSourceUpdate } from './edit-item-media-ops';
 export { applyGeneric, type GenericCommands } from './edit-item-generic-actions';
 
 export const GENERIC_ITEM_KINDS: ReadonlySet<string> = new Set([
-  'video', 'image', 'audio', 'gif', 'svg', 'motion-graphic', 'text', 'solid',
+  'video', 'image', 'audio', 'gif', 'svg', 'motion-graphic', 'text', 'solid', 'sequence',
 ]);
 
 /** Pool-asset kinds that edit_item.adds can place as a clip.

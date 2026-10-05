@@ -6,6 +6,7 @@ import { AUDIO_ASSET_TOOL_NAMES } from './tools/schemas/audio-asset-tools';
 import { SCENE_QUALITY_TOOL_NAMES, SCENE_QUALITY_TOOL_SCHEMAS } from './tools/schemas/scene-quality-tools';
 import { TRANSCRIPT_TOOL_NAMES, TRANSCRIPT_TOOL_SCHEMAS } from './tools/schemas/transcript-tools';
 import { TIMELINE_TOOL_NAMES, TIMELINE_TOOL_SCHEMAS } from './tools/schemas/timeline-tools';
+import { VISUAL_COMPOSITION_TOOL_NAMES, VISUAL_COMPOSITION_TOOL_SCHEMAS } from './tools/schemas/visual-composition-tools';
 import { SCRIPT_TOOL_NAMES, SCRIPT_TOOL_SCHEMAS } from './tools/schemas/script-tools';
 import { FRAMES_TOOL_NAMES, FRAMES_TOOL_SCHEMAS } from './tools/schemas/frames-tool';
 import { SCENE_DETECTION_TOOL_NAMES, SCENE_DETECTION_TOOL_SCHEMAS } from './tools/schemas/scene-detection-tools';
@@ -79,6 +80,7 @@ export const TOOL_SCHEMAS: AgentToolSchema[] = [
   ...TRANSCRIPT_TOOL_SCHEMAS,
   // multi-timeline management (manage_timelines: list/create/duplicate/switch/update/delete)
   ...TIMELINE_TOOL_SCHEMAS,
+  ...VISUAL_COMPOSITION_TOOL_SCHEMAS,
   // dynamic track management + stable ids (edit_track)
   ...TRACK_TOOL_SCHEMAS,
   // project media-pool organization (manage_media_pool)
@@ -216,6 +218,7 @@ type ToolExecutorLoader = () => Promise<ToolExecutor>;
 const EXECUTOR_GROUPS: ReadonlyArray<readonly [ReadonlySet<string>, ToolExecutorLoader]> = [
   [TRANSCRIPT_TOOL_NAMES, async () => (await import('./tools/transcript-tools')).execTranscriptTool],
   [TIMELINE_TOOL_NAMES, async () => (await import('./tools/timeline-tools')).execTimelineTool],
+  [VISUAL_COMPOSITION_TOOL_NAMES, async () => (await import('./tools/visual-composition-tools')).execVisualCompositionTool],
   [TRACK_TOOL_NAMES, async () => (await import('./tools/track-tools')).execTrackTool],
   [MEDIA_POOL_TOOL_NAMES, async () => (await import('./tools/media-pool-tools')).execMediaPoolTool],
   [SCRIPT_TOOL_NAMES, async () => (await import('./tools/script-tools')).execScriptTool],

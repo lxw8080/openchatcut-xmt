@@ -13,6 +13,7 @@
  *   validate {doc}            -> {ok, doc?}
  */
 import * as readline from 'node:readline';
+import { inspectProject } from './inspect';
 import {
   HEADLESS_READ_TOOLS,
   HEADLESS_TOOLS,
@@ -50,6 +51,8 @@ async function handle(method: string, params: Record<string, unknown>): Promise<
       };
     case 'tool_schemas':
       return { schemas: await toolSchemas() };
+    case 'inspect':
+      return inspectProject(loadDoc(params.doc));
     case 'validate':
       try {
         return { ok: true, doc: loadDoc(params.doc) };

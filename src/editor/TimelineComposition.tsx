@@ -58,7 +58,7 @@ function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, fr
   const { child, durationInFrames: childDuration } = resolved;
   const sourceFrame = Math.min(childDuration - 1, sourceFrameAt(item, localFrame));
   const dynamicFrom = nestedSequenceFrom(parentFrame, sourceFrame);
-  const scale = fit === 'cover'
+  const scale = item.sequenceFit === 'native' ? 1 : fit === 'cover'
     ? Math.max(parentWidth / child.width, parentHeight / child.height)
     : Math.min(parentWidth / child.width, parentHeight / child.height);
   return (

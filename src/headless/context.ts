@@ -43,6 +43,7 @@ export const HEADLESS_WRITE_TOOLS = [
   'manage_markers',
   'manage_timelines',
   'add_motion_graphic',
+  'edit_visual_composition',
 ] as const;
 export const HEADLESS_TOOLS: readonly string[] = [...HEADLESS_READ_TOOLS, ...HEADLESS_WRITE_TOOLS];
 
