@@ -10,7 +10,9 @@ import { GLSL_TRANSITIONS } from './transitions';
 import { glEffects } from './clipEffects';
 import type { AspectFit, GlslTransitionType, TimelineItem, TransitionDirection } from '../editor/types';
 import { backgroundFillAppearanceFor, backgroundFillFilter } from '../editor/backgroundFill';
-import { clipOpacityAt } from '../editor/clipFade';
+import { appearanceAt, clipGeometryAt, clipOpacityAt } from '../editor/clipFade';
+import { zoomAt } from '../editor/zoom';
+import { clampVisualBorderRadius, visibleVisualFrameRect } from '../editor/visualFrameGeometry';
 
 // One GLSL transition window straddling the cut from R to R+L. A muted,
 // frame-synced media pair feeds 2D staging canvases, each clip's ordered effect
@@ -72,26 +74,54 @@ function drawMediaFrame(
   fit: AspectFit,
   item: TimelineItem,
   backgroundFill: boolean,
-  opacity: number,
+  localFrame: number,
 ): void {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.save();
-  ctx.globalAlpha = opacity;
-  if (!backgroundFill) {
-    drawPlaced(ctx, el, fit);
+  // Opacity is applied once after the effect graph by renderTransitionWithFx.
+  // The blur companion stays on the full canvas, like BackgroundFillLayer.
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  if (backgroundFill) {
+    const backing = backgroundFillAppearanceFor(item, width, height);
+    ctx.save();
+    ctx.filter = backgroundFillFilter(backing, item.filters);
+    drawPlaced(ctx, el, 'cover', backing.overscanScale);
     ctx.restore();
-    return;
   }
-  const appearance = backgroundFillAppearanceFor(item, ctx.canvas.width, ctx.canvas.height);
-  const filters = item.filters;
-  ctx.save();
-  ctx.filter = backgroundFillFilter(appearance, filters);
-  drawPlaced(ctx, el, 'cover', appearance.overscanScale);
-  ctx.restore();
-  ctx.save();
-  ctx.filter = `brightness(${filters?.brightness ?? 1}) contrast(${filters?.contrast ?? 1}) saturate(${filters?.saturate ?? 1}) blur(${filters?.blur ?? 0}px)`;
-  drawPlaced(ctx, el, 'contain');
-  ctx.restore();
+
+  const appearance = appearanceAt(item, localFrame, false);
+  const geometry = clipGeometryAt(item, localFrame);
+  ctx.translate(width / 2 + geometry.x * width / 100, height / 2 + geometry.y * height / 100);
+  ctx.rotate(geometry.rotation * Math.PI / 180);
+  ctx.scale(geometry.scaleX, geometry.scaleY);
+  ctx.translate(-width / 2, -height / 2);
+  const crop = item.transform?.crop;
+  if (crop) {
+    const x = (crop.left ?? 0) * width;
+    const y = (crop.top ?? 0) * height;
+    const cropWidth = width - x - (crop.right ?? 0) * width;
+    const cropHeight = height - y - (crop.bottom ?? 0) * height;
+    ctx.beginPath();
+    ctx.rect(x, y, Math.max(0, cropWidth), Math.max(0, cropHeight));
+    ctx.clip();
+  }
+  if (item.zoom) {
+    const zoom = zoomAt(item.zoom, localFrame, item.durationInFrames);
+    ctx.translate(zoom.focalX * width, zoom.focalY * height);
+    ctx.scale(zoom.magnification, zoom.magnification);
+    ctx.translate(-zoom.focalX * width, -zoom.focalY * height);
+  }
+  const foregroundFit = backgroundFill ? 'contain' : fit;
+  const rect = visibleVisualFrameRect({ width, height }, mediaSize(el), foregroundFit);
+  const radius = clampVisualBorderRadius(appearance.borderRadius, rect);
+  if (radius) {
+    ctx.beginPath();
+    ctx.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+    ctx.clip();
+  }
+  ctx.filter = appearance.foregroundStyle.filter ?? 'none';
+  drawPlaced(ctx, el, foregroundFit);
   ctx.restore();
 }
 
@@ -235,7 +265,7 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
           fit,
           outgoing,
           outgoingBackgroundFill,
-          outgoingOpacity,
+          absoluteFrame - outgoing.startFrame,
         );
         drawMediaFrame(
           incomingContext,
@@ -243,7 +273,7 @@ export function GlTransition({ type, direction, L, windowStart, outgoing, incomi
           fit,
           incoming,
           incomingBackgroundFill,
-          incomingOpacity,
+          absoluteFrame - incoming.startFrame,
         );
         const transitionFrame = buildTransitionShaderFrame(def, {
           sequenceFrame: frame,

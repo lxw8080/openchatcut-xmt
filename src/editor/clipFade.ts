@@ -30,9 +30,8 @@ export interface ClipAppearance {
   foregroundStyle: import('react').CSSProperties;
 }
 
-/** Per-frame clip appearance (opacity/border/transform/crop/filters) shared by
- *  the clip wrapper and the shared-visual video group. */
-export function appearanceAt(item: import('./types').TimelineItem, frame: number, hiddenByCaptions: boolean): ClipAppearance {
+/** Native geometry sampled once for both CSS clips and GL transition sources. */
+export function clipGeometryAt(item: TimelineItem, frame: number) {
   const keyframeValue = (prop: import('./types').KeyframeProp): number | undefined => {
     const values = item.keyframes?.[prop];
     return values?.length ? sampleKeyframes(values, frame) : undefined;
@@ -43,10 +42,24 @@ export function appearanceAt(item: import('./types').TimelineItem, frame: number
   const scaleY = keyframeValue('scaleY') ?? transform?.scaleY ?? scale ?? transform?.scale ?? 1;
   const hasScale = scale !== undefined || keyframeValue('scaleX') !== undefined || keyframeValue('scaleY') !== undefined
     || transform?.scale !== undefined || transform?.scaleX !== undefined || transform?.scaleY !== undefined;
-  const hasTransform = transform || keyframeValue('x') !== undefined || keyframeValue('y') !== undefined
-    || keyframeValue('rotation') !== undefined || hasScale;
-  const cssTransform = hasTransform
-    ? `translate(${keyframeValue('x') ?? transform?.x ?? 0}%, ${keyframeValue('y') ?? transform?.y ?? 0}%) rotate(${keyframeValue('rotation') ?? transform?.rotation ?? 0}deg) scale(${scaleX}, ${scaleY})`
+  return {
+    x: keyframeValue('x') ?? transform?.x ?? 0,
+    y: keyframeValue('y') ?? transform?.y ?? 0,
+    rotation: keyframeValue('rotation') ?? transform?.rotation ?? 0,
+    scaleX, scaleY,
+    hasTransform: !!transform || keyframeValue('x') !== undefined || keyframeValue('y') !== undefined
+      || keyframeValue('rotation') !== undefined || hasScale,
+    borderRadius: Math.max(0, keyframeValue('borderRadius') ?? transform?.borderRadius ?? 0),
+  };
+}
+
+/** Per-frame clip appearance (opacity/border/transform/crop/filters) shared by
+ *  the clip wrapper and the shared-visual video group. */
+export function appearanceAt(item: import('./types').TimelineItem, frame: number, hiddenByCaptions: boolean): ClipAppearance {
+  const geometry = clipGeometryAt(item, frame);
+  const transform = item.transform;
+  const cssTransform = geometry.hasTransform
+    ? `translate(${geometry.x}%, ${geometry.y}%) rotate(${geometry.rotation}deg) scale(${geometry.scaleX}, ${geometry.scaleY})`
     : undefined;
   const crop = transform?.crop;
   const hasCrop = crop && ((crop.left ?? 0) > 0 || (crop.top ?? 0) > 0 || (crop.right ?? 0) > 0 || (crop.bottom ?? 0) > 0);
@@ -58,7 +71,7 @@ export function appearanceAt(item: import('./types').TimelineItem, frame: number
   const filters = item.filters;
   return {
     opacity,
-    borderRadius: Math.max(0, keyframeValue('borderRadius') ?? transform?.borderRadius ?? 0),
+    borderRadius: geometry.borderRadius,
     foregroundStyle: {
       transform: cssTransform,
       filter: filters
