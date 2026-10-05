@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AbsoluteFill, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
 import { GlTransition } from '../gl/GlTransition';
@@ -289,7 +289,10 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           listener={onSelectedPreviewStatus}
         />
       ))}
-      {sharedVisualGroups.map((group) => (
+      {/* Finish each track (including its transition) before painting higher tracks. */}
+      {[...visualTracks].reverse().filter((trackId) => !isHidden(trackId)).map((trackId) => (
+        <Fragment key={`visual-track:${trackId}`}>
+      {sharedVisualGroups.filter((group) => group[0]!.track === trackId).map((group) => (
         <SharedVideoVisualGroup
           key={`sv:${group[0]!.id}`}
           group={group}
@@ -301,7 +304,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           browserRenderer={browserRenderer}
         />
       ))}
-      {ordered.map((item) => {
+      {ordered.filter((item) => item.track === trackId).map((item) => {
         if (sharedVisualIds.has(item.id)) return null;
         const eb = extendBefore.get(item.id) ?? 0;
         const ea = extendAfter.get(item.id) ?? 0;
@@ -354,8 +357,8 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           </Sequence>
         );
       })}
-      {/* GLSL transition windows: painted over both clips, beneath captions */}
-      {glWindows.map((w) => (
+      {/* GLSL windows replace this track's clips; higher photos/MG remain above. */}
+      {glWindows.filter((w) => w.incoming.track === trackId && !isHidden(w.outgoing.track)).map((w) => (
         <Sequence key={w.key} from={w.from} durationInFrames={w.L} premountFor={premountFrames} name={`tr:${w.type}`}>
           <GlTransition
             type={w.type} direction={w.direction} L={w.L} windowStart={w.from}
@@ -368,6 +371,8 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
             onReadyChange={(ready) => setGlWindowReady(w.key, ready)}
           />
         </Sequence>
+      ))}
+        </Fragment>
       ))}
       {audio.map((item) => (
         <AudioClip
