@@ -20,7 +20,8 @@ export function commitPlan(ctx: AgentContext, plan: OpResult, ripple = false): O
   if (name === 'addSolid') return commitSolidPlan(ctx, plan, ripple);
   if (name === 'genericUpdate' || name === 'genericDelete' || name === 'slip'
     || name === 'replaceMedia' || name === 'relinkMedia') {
-    return applyGeneric(plan, ctx.commands) ?? { error: `unknown plan ${name}` };
+    return applyGeneric(plan, ctx.commands, findItem(ctx.getState().items, plan.itemId)?.track)
+      ?? { error: `unknown plan ${name}` };
   }
   return { error: `unknown plan ${name}` };
 }

@@ -32,14 +32,15 @@ export interface GenericCommands {
 
 /** Commit a generic plan. Same-lane timing is one retime so placement uses the
  * new length, rather than rejecting a move against the old untrimmed length. */
-export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResult | null {
+export function applyGeneric(plan: OpResult, commands: GenericCommands, currentTrack?: string): OpResult | null {
   const id = String(plan.itemId);
   if (plan.plan === 'genericUpdate') {
+    const changesTrack = plan.track !== undefined && plan.track !== currentTrack;
     if (plan.startFrame !== undefined || plan.durationInFrames !== undefined || plan.srcInFrame !== undefined) {
-      commands.setItemTiming(id, { startFrame: plan.track === undefined ? plan.startFrame as number | undefined : undefined,
+      commands.setItemTiming(id, { startFrame: !changesTrack ? plan.startFrame as number | undefined : undefined,
         durationInFrames: plan.durationInFrames as number | undefined, srcInFrame: plan.srcInFrame as number | undefined });
     }
-    if (plan.track !== undefined) {
+    if (changesTrack) {
       commands.moveItem(id, { track: plan.track as string, startFrame: plan.startFrame as number | undefined });
     }
     if (plan.props !== undefined) commands.updateItemProps(id, plan.props as Record<string, unknown>);
