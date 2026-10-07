@@ -40,7 +40,25 @@ export async function execEditItemTool(
       };
     },
     validate: validateOperation,
-    apply: (draft, plan) => commitPlan(draft.context, plan, ripple),
+    apply: (draft, plan) => {
+      const before = new Set(draft.context.getState().items.map((item) => item.id));
+      const result = commitPlan(draft.context, plan, ripple);
+      if (result.error) return result;
+      const created = draft.context.getState().items.filter((item) => !before.has(item.id));
+      const placed = result.placed as { itemId?: string } | undefined;
+      const id = plan.itemId ?? result.itemId ?? placed?.itemId ?? result.id
+        ?? (created.length === 1 ? created[0].id : undefined);
+      const item = draft.context.getState().items.find((candidate) => candidate.id === id);
+      if (plan.plan === 'genericUpdate' || ['addMedia', 'addMg', 'addAudio', 'addText', 'addSolid'].includes(String(plan.plan))) {
+        if (!item) return { error: 'item was not created or updated; entire batch rolled back' };
+        for (const key of ['startFrame', 'durationInFrames', 'srcInFrame', 'track'] as const) {
+          if (plan[key] !== undefined && item[key] !== plan[key]) {
+            return { error: `requested ${key}=${String(plan[key])} was not applied (actual ${String(item[key])}); adjust placement or source capacity; entire batch rolled back` };
+          }
+        }
+      }
+      return result;
+    },
     publish: (draft) => ctx.commands.applyDoc(draft.engine.getDoc()),
   });
 }

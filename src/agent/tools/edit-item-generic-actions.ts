@@ -30,17 +30,17 @@ export interface GenericCommands {
   rippleDeleteItem: (id: string) => void;
 }
 
-/** Commit a generic plan. Returns the op result; unknown plans return null so the caller
- *  can fall through to its own switch. move and trim are separate commands so startFrame
- *  isn't double-applied; each is a no-op when its fields are absent. */
+/** Commit a generic plan. Same-lane timing is one retime so placement uses the
+ * new length, rather than rejecting a move against the old untrimmed length. */
 export function applyGeneric(plan: OpResult, commands: GenericCommands): OpResult | null {
   const id = String(plan.itemId);
   if (plan.plan === 'genericUpdate') {
-    if (plan.track !== undefined || plan.startFrame !== undefined) {
-      commands.moveItem(id, { track: plan.track as string | undefined, startFrame: plan.startFrame as number | undefined });
+    if (plan.startFrame !== undefined || plan.durationInFrames !== undefined || plan.srcInFrame !== undefined) {
+      commands.setItemTiming(id, { startFrame: plan.track === undefined ? plan.startFrame as number | undefined : undefined,
+        durationInFrames: plan.durationInFrames as number | undefined, srcInFrame: plan.srcInFrame as number | undefined });
     }
-    if (plan.durationInFrames !== undefined || plan.srcInFrame !== undefined) {
-      commands.setItemTiming(id, { durationInFrames: plan.durationInFrames as number | undefined, srcInFrame: plan.srcInFrame as number | undefined });
+    if (plan.track !== undefined) {
+      commands.moveItem(id, { track: plan.track as string, startFrame: plan.startFrame as number | undefined });
     }
     if (plan.props !== undefined) commands.updateItemProps(id, plan.props as Record<string, unknown>);
     if (plan.volume !== undefined) commands.setItemVolume(id, plan.volume as number);

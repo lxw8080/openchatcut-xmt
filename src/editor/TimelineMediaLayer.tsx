@@ -17,6 +17,7 @@ import { appearanceAt } from './clipFade';
 import { zoomAt } from './zoom';
 import { clipFadeFactor, clipOpacityAt } from './clipFade';
 import { volumeAtFrame } from './keyframes';
+import { isStaticallySilent } from './staticSilence';
 import { sourceFrameAt } from './sourceLimit';
 import type { AspectFit, TimelineItem, TransitionItem } from './types';
 import { isAudioTransition } from './types';
@@ -117,7 +118,7 @@ export function AudioClip({ item, fps, muted, gainAt, transitions, premountFor, 
   browserRenderer: boolean;
 }) {
   const volumeAt = (localFrame: number) => (muted ? 0 : volumeAtFrame(item, localFrame));
-  if (!item.src) return null;
+  if (!item.src || muted || isStaticallySilent(item)) return null;
   if (hasOperationalTranscript(item)) {
     const deleted = new Set(item.deletedWordIdx ?? []);
     return <>{keptSegments(item.transcript, deleted, fps, item.startFrame, {
@@ -151,7 +152,7 @@ export function ContinuousVideoAudio({ items, muted, gainAt, premountFor, browse
 }) {
   const first = items[0];
   const last = items.at(-1);
-  if (!first || !last) return null;
+  if (!first || !last || muted || items.every(isStaticallySilent)) return null;
   const duration = last.startFrame + last.durationInFrames - first.startFrame;
   const volume = (frame: number) => {
     const timelineFrame = first.startFrame + frame;
@@ -170,7 +171,7 @@ export function ContinuousVideoAudio({ items, muted, gainAt, premountFor, browse
   );
 }
 
-export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, premountFor, browserRenderer }: {
+export function SharedVideoVisualGroup({ group, fit, canvasW, canvasH, premountFor, browserRenderer }: {
   group: TimelineItem[];
   fit: AspectFit;
   muted: boolean;
@@ -205,7 +206,7 @@ export function SharedVideoVisualGroup({ group, fit, muted, canvasW, canvasH, pr
   };
   let visual = (
     <RuntimeVideo browserRenderer={browserRenderer} src={first.src} trimBefore={first.srcInFrame ?? 0}
-      playbackRate={first.playbackRate ?? 1} volume={0} muted={muted} style={style} />
+      playbackRate={first.playbackRate ?? 1} volume={0} muted style={style} />
   );
   if (item.zoom) {
     const zoom = zoomAt(item.zoom, localFrame, item.durationInFrames);
@@ -290,7 +291,7 @@ function EffectMediaFill({ props, trimBefore, volume }: {
   trimBefore: number;
   volume: MediaVolume;
 }) {
-  const { item, fit, canvasW, canvasH, borderRadius, frameOffset, onPreviewStatus, groupedAudio, browserRenderer } = props;
+  const { item, fit, canvasW, canvasH, borderRadius, frameOffset, onPreviewStatus, groupedAudio, browserRenderer, muted } = props;
   const frame = visibleVisualFrameRect(
     { width: canvasW, height: canvasH },
     { width: item.width ?? canvasW, height: item.height ?? canvasH },
@@ -302,7 +303,7 @@ function EffectMediaFill({ props, trimBefore, volume }: {
         <ClipFx item={item} fit={fit === 'contain' ? 'cover' : fit} width={Math.max(1, Math.round(frame.width))}
           height={Math.max(1, Math.round(frame.height))} frameOffset={frameOffset} onPreviewStatus={onPreviewStatus} />
       </VisualClipSurface>
-      {item.kind !== 'image' && !groupedAudio && <MixedRuntimeAudio item={item} browserRenderer={browserRenderer}
+      {item.kind !== 'image' && !groupedAudio && !muted && <MixedRuntimeAudio item={item} browserRenderer={browserRenderer}
         trimBefore={trimBefore} playbackRate={item.playbackRate ?? 1} volume={volume} />}
     </>
   );
@@ -323,7 +324,7 @@ function PlainMediaFill({ props, trimBefore, volume }: {
         : item.denoisedSrc
           ? <><RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore}
               playbackRate={item.playbackRate ?? 1} volume={0} muted style={style} />
-            {!groupedAudio && <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={trimBefore}
+            {!groupedAudio && !muted && <MixedRuntimeAudio item={item} browserRenderer={browserRenderer} trimBefore={trimBefore}
               playbackRate={item.playbackRate ?? 1} volume={volume} />}</>
           : <RuntimeVideo browserRenderer={browserRenderer} src={item.src!} trimBefore={trimBefore}
               playbackRate={item.playbackRate ?? 1} volume={groupedAudio ? 0 : volume}
@@ -333,7 +334,8 @@ function PlainMediaFill({ props, trimBefore, volume }: {
 }
 
 export function MediaFill(props: MediaFillProps) {
-  const { item, frameOffset, muted, groupedAudio, gainAt } = props;
+  const { item, frameOffset, groupedAudio, gainAt } = props;
+  const muted = props.muted || isStaticallySilent(item);
   const trimBefore = sourceFrameAt(item, frameOffset);
   const volume = (frame: number) => {
     const localFrame = frame + frameOffset;
@@ -346,6 +348,6 @@ export function MediaFill(props: MediaFillProps) {
     texturable: item.kind === 'video' || item.kind === 'image',
   });
   return adapter.adapter === 'gl-effect'
-    ? <EffectMediaFill props={props} trimBefore={trimBefore} volume={volume} />
-    : <PlainMediaFill props={{ ...props, groupedAudio }} trimBefore={trimBefore} volume={volume} />;
+    ? <EffectMediaFill props={{ ...props, muted }} trimBefore={trimBefore} volume={volume} />
+    : <PlainMediaFill props={{ ...props, muted, groupedAudio }} trimBefore={trimBefore} volume={volume} />;
 }
