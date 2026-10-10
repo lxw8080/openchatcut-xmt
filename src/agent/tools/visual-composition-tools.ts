@@ -155,7 +155,7 @@ export async function execVisualCompositionTool(name: string, args: Data, ctx: A
       const groupItem = seq(`${node.id}_instance`, element, box);
       groupItem.keyframes = { ...groupCues(node.events, groupItem.transform), ...motion(node.motion, groupItem.transform) };
       groupItem.props = { _xmt: { ...meta(node.id, node), layoutTemplateKey: 'xmt-composition-node-v1#' + node.component, layoutSystemTransform: { ...groupItem.transform } } };
-      const savedLayout = layoutDefault('xmt-composition-node-v1#' + node.component, width, height);
+      const savedLayout = layoutDefault('xmt-composition-node-v1#' + node.component, owner.width, owner.height);
       if (savedLayout) {
         for (const prop of ['x','y','scale'] as const) {
           const base = groupItem.transform?.[prop] ?? (prop === 'scale' ? 1 : 0);

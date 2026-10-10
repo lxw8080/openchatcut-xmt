@@ -18,7 +18,7 @@ export function MgLayoutControls({ item, panel }: { item: TimelineItem; panel: I
   const value = normalizeLayout({ x: item.transform?.x ?? 0, y: item.transform?.y ?? 0, scale: item.transform?.scaleX ?? item.transform?.scale ?? 1 });
   const width = panel.layoutWidth ?? 1920, height = panel.layoutHeight ?? 1080;
   const bounds = getItemMgBounds(item, width, height);
-  const aspect = height > width ? 'portrait' : 'landscape';
+  const aspect = panel.layoutAspect ?? (height > width ? 'portrait' : 'landscape');
   const apply = (next: Layout) => { panel.playerRef.current?.pause(); panel.onItemLayoutChange!({ ...normalizeLayout(next), scaleX: undefined, scaleY: undefined }); setMessage(''); };
   const fromDefault = (layout: Layout) => ({ x: (base.x ?? 0) * layout.scale + layout.x, y: (base.y ?? 0) * layout.scale + layout.y, scale: (base.scale ?? 1) * layout.scale });
   const save = async (remove: boolean) => {
@@ -39,7 +39,7 @@ export function MgLayoutControls({ item, panel }: { item: TimelineItem; panel: I
       onChange={e => apply(scaleAt(value, Number(e.target.value)/100, { x: bounds.x + bounds.w/2, y: bounds.y + bounds.h/2 }))} /></label>
     <button type="button" onClick={() => apply(fromDefault({ x: 0, y: 0, scale: 1 }))}>恢复系统布局</button>
     {key && <>
-      <button type="button" onClick={() => { setBusy(true); void loadLayoutDefaults().then(() => apply(fromDefault(layoutDefault(key, width, height) ?? { x: 0, y: 0, scale: 1 }))).catch(e => setMessage(e.message)).finally(() => setBusy(false)); }} disabled={busy}>应用我的默认</button>
+      <button type="button" onClick={() => { setBusy(true); void loadLayoutDefaults().then(() => apply(fromDefault(layoutDefault(key, aspect === 'portrait' ? 1 : 2, aspect === 'portrait' ? 2 : 1) ?? { x: 0, y: 0, scale: 1 }))).catch(e => setMessage(e.message)).finally(() => setBusy(false)); }} disabled={busy}>应用我的默认</button>
       <button type="button" disabled={busy} onClick={() => void save(false)}>保存为个人默认</button>
       <button type="button" disabled={busy} onClick={() => void save(true)}>移除个人默认</button>
     </>}

@@ -5,6 +5,8 @@ import { effectivePreviewTransform } from '../components/preview/previewTransfor
 import { historyReduce } from './reducerHistory';
 import { buildCommands } from './storeCommandBuilder';
 import { loadLayoutDefaults } from '../xmt/mgLayoutDefaults';
+import { execVisualCompositionTool } from '../agent/tools/visual-composition-tools';
+import type { AgentContext } from '../agent/context';
 import type { ProjectDoc, TimelineItem } from './types';
 import type { Tpl } from '../types';
 const close = (a:number,b:number) => assert.ok(Math.abs(a-b)<1e-6, `${a} != ${b}`);
@@ -54,4 +56,21 @@ const commands=buildCommands(action => {document=historyReduce({past:[],present:
 commands.addMotionGraphic({id:'xmt-ov-score-bug',name:'比分',width:1920,height:1080,durationInFrames:90,props:{},code:'',fps:30,category:'',propSchema:[],thumb:null} as Tpl);
 assert.deepEqual(document.timelines[0].items[1].transform,{x:12,y:-8,scale:.6});
 assert.deepEqual(annotateLayoutKeys(saved).timelines[0].items[0].transform,JSON.parse(JSON.stringify(moved.transform)));
+// A wide component window inside a portrait project uses the owner's defaults.
+document={...initial,activeTimelineId:'root',timelines:[{...timeline,width:1080,height:1920,items:[],selectedId:null}]};
+Object.assign(globalThis,{window:{__XMT_EDITOR__:{csrfToken:'',projectUrl:'/qa/project'}}});
+globalThis.fetch=async () => new Response(JSON.stringify({success:true,data:{revision:2,layouts:{
+  'xmt-composition-node-v1#chapter':{landscape:{x:111,y:0,scale:1},portrait:{x:12,y:-8,scale:.6}}
+}}}));
+const compositionResult=await execVisualCompositionTool('edit_visual_composition',{
+  action:'create',composition_id:'aspect',template_id:'xmt-composition-node-v1',
+  composition:{version:1,id:'aspect',start_ms:0,end_ms:3000,rect:{x:0,y:0,w:1,h:.1}},
+  nodes:[{id:'heading',component:'chapter',rect:{x:0,y:0,w:1,h:1},style:{font:'Arial',font_size:.03},parts:[{
+    id:'panel',shape:'panel',rect:{x:0,y:0,w:1,h:1},style:{fontFamily:'Arial',fontSize:32},content:{text:'长标题'}
+  }]}]
+},{commands:{applyDoc:(next:ProjectDoc)=>{document=next;}},getDoc:()=>document,
+   templates:[{id:'xmt-composition-node-v1',code:'',props:{}}]} as unknown as AgentContext);
+assert.equal(compositionResult.ok,true,JSON.stringify(compositionResult));
+assert.deepEqual(document.timelines.flatMap(t=>t.items).find(i=>i.id==='vc_aspect_heading_instance')?.transform,{x:12,y:-8,scale:.6});
+Reflect.deleteProperty(globalThis,'window');
 console.log('MG geometry, linked curves, history, refresh and new insertion passed');

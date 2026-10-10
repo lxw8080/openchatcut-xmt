@@ -52,6 +52,7 @@ export interface InspectorPanelProps {
   onItemFadeChange: (fade: FadePatch) => void;
   layoutWidth?: number;
   layoutHeight?: number;
+  layoutAspect?: 'landscape' | 'portrait';
   onItemLayoutChange?: (patch: ClipTransform) => void;
   onEditLayoutComponents?: () => void;
   onItemTransformChange: (patch: ClipTransform) => void;
