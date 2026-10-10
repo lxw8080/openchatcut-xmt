@@ -1,3 +1,4 @@
+import { insertWithCurrentLayout } from '../../xmt/mgLayoutDefaults';
 // Library asset drag and drop application (translated verbatim from Timeline.tsx): fx/lut/zoom/transition drop into clip,
 // sound/template falls to the track (the track of the right type is automatically selected). Reasons for rejection must be given (notice) - before
 // Silent return false, the user only sees "No response after dragging".
@@ -159,7 +160,7 @@ export function applyLibraryToTrack(
     if (trackKind(state, t) !== 'video') {
       t = trackIds.find((id) => trackKind(state, id) === 'video') ?? defaultTrackId(state, 'video') ?? trackId;
     }
-    commands.addMotionGraphic(tpl, { track: t, startFrame, ripple, overwrite });
+    insertWithCurrentLayout(tpl.id, () => commands.addMotionGraphic(tpl, { track: t, startFrame, ripple, overwrite }));
     return true;
   }
   return false;

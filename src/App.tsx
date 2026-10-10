@@ -4,6 +4,8 @@ import { useT } from './i18n/locale';
 import { theme } from './theme';
 import type { ProjectDoc } from './editor/types';
 import { xmtHost } from './xmt/host';
+import { annotateLayoutKeys } from './editor/mgLayoutGeometry';
+import { loadLayoutDefaults, loadLayoutOccupancy } from './xmt/mgLayoutDefaults';
 import { fetchXmtProject, renameXmtProject } from './xmt/projectBridge';
 
 // xmt fork：没有自有 server/agent 后端，编辑器永远跑在 /editor/<job> 外壳里，
@@ -62,14 +64,14 @@ export default function App() {
   useEffect(() => {
     if (!host) return;
     let alive = true;
-    fetchXmtProject()
-      .then((doc) => {
+    Promise.all([fetchXmtProject(), loadLayoutDefaults().catch(() => undefined), loadLayoutOccupancy().catch(() => undefined)])
+      .then(([doc]) => {
         if (!alive) return;
         if (!isProjectDoc(doc)) {
           setBoot({ phase: 'error', message: t('工程文档格式不兼容，无法加载。') });
           return;
         }
-        setBoot({ phase: 'ready', doc });
+        setBoot({ phase: 'ready', doc: annotateLayoutKeys(doc) });
       })
       .catch((error: unknown) => {
         if (alive) setBoot({ phase: 'error', message: error instanceof Error ? error.message : String(error) });

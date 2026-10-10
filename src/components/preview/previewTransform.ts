@@ -1,3 +1,4 @@
+import { getItemMgBounds, mgLayoutEnabled } from '../../editor/mgLayoutGeometry';
 import { isBackgroundFillActive } from '../../editor/backgroundFill';
 import { resolveClipScaleAxes } from '../../editor/clipTransformScale';
 import { coerceKeyframeValue } from '../../editor/keyframeRegistry';
@@ -147,7 +148,11 @@ function previewBaseRect(state: TimelineState, item: TimelineItem): PreviewRect 
   if (state.width <= 0 || state.height <= 0) return { x: 0, y: 0, width: 0, height: 0 };
   const canvas = { x: 0, y: 0, width: state.width, height: state.height };
   let content = canvas;
-  if (item.kind !== 'solid') {
+  if (mgLayoutEnabled(item)) {
+    const b = getItemMgBounds(item, state.width, state.height);
+    content = { x: b.x*state.width, y: b.y*state.height, width: b.w*state.width, height: b.h*state.height };
+
+  } else if (item.kind !== 'solid') {
     const sourceWidth = item.width && item.width > 0 ? item.width : state.width;
     const sourceHeight = item.height && item.height > 0 ? item.height : state.height;
     content = visibleVisualFrameRect(

@@ -1,3 +1,5 @@
+import { mgLayoutActions } from './mgLayoutActions';
+import { layoutDefault } from '../xmt/mgLayoutDefaults';
 import { copyTranscriptIdentity } from '../transcript/identity';
 import type { AtomicAction, ProjectDispatch } from './reduce';
 import { maxOrder, projectReduce } from './reduce';
@@ -170,7 +172,9 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
           width: tpl.width,
           height: tpl.height,
         };
-        placeItem(item, at);
+        const state = activeTimeline(getDoc());
+        const saved = layoutDefault(tpl.id, state.width, state.height);
+        placeItem(saved ? { ...item, transform: { ...saved } } : item, at);
       },
       addAudio: (asset, at) => {
         const item = {
@@ -309,7 +313,7 @@ export function buildCommands(dispatch: ProjectDispatch, getDoc: () => ProjectDo
       },
       setItemVolume: (id, volume) => dispatch({ type: 'setVolume', id, volume }),
       setItemFade: (id, fade) => dispatch({ type: 'setFade', id, ...fade }),
-      setItemTransform: (id, patch) => dispatch({ type: 'setTransform', id, patch }),
+      setItemTransform: (id, patch) => dispatch({ type: 'batch', label: 'Adjust template layout', actions: mgLayoutActions(activeEditorState(getDoc()), id, patch) }),
       setItemFilters: (id, patch) => dispatch({ type: 'setFilters', id, patch }),
       setItemBackgroundFill: (id, enabled, strength) => dispatch({ type: 'setBackgroundFill', id, enabled, strength }),
       setItemZoom: (id, patch) => dispatch({ type: 'setZoom', id, patch }),

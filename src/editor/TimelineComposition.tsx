@@ -1,3 +1,5 @@
+import { StaticMgMeasure } from './StaticMgMeasure';
+import { mgLayoutEnabled } from './mgLayoutGeometry';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { AbsoluteFill, Sequence, getRemotionEnvironment, useCurrentFrame } from 'remotion';
 import { CaptionsLayer } from '../captions/CaptionsLayer';
@@ -26,7 +28,7 @@ import { ItemLayer, SolidLayer, TextLayer, WatermarkLayer } from './TimelineGrap
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
-function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, frameOffset, browserRenderer, sequenceLimits, muted }: {
+function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, frameOffset, browserRenderer, sequenceLimits, muted, measure = false }: {
   item: TimelineItem;
   project?: ProjectDoc;
   parentWidth: number;
@@ -36,6 +38,7 @@ function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, fr
   browserRenderer: boolean;
   sequenceLimits?: SequenceGraphLimits;
   muted: boolean;
+  measure?: boolean;
 }) {
   const parentFrame = useCurrentFrame();
   const localFrame = parentFrame + frameOffset;
@@ -56,12 +59,25 @@ function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, fr
     });
   }
   const { child, durationInFrames: childDuration } = resolved;
+  const staticProject = measure && project ? { ...project, timelines: project.timelines.map(t => ({ ...t, transitions: [], items: t.items.map(i => ({
+    ...i, keyframes: undefined, fadeInFrames: 0, fadeOutFrames: 0,
+    props: { ...i.props, motion: 'none', events: [] },
+  })) })) } : undefined;
+  const staticChild = staticProject?.timelines.find(t => t.id === child.id);
   const sourceFrame = Math.min(childDuration - 1, sourceFrameAt(item, localFrame));
   const dynamicFrom = nestedSequenceFrom(parentFrame, sourceFrame);
   const scale = item.sequenceFit === 'native' ? 1 : fit === 'cover'
     ? Math.max(parentWidth / child.width, parentHeight / child.height)
     : Math.min(parentWidth / child.width, parentHeight / child.height);
   return (
+    <>
+    {measure && staticChild && <StaticMgMeasure id={item.id} width={parentWidth} height={parentHeight}>
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ width: child.width, height: child.height, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
+          <TimelineContent state={staticChild} project={staticProject} transparent forceMuted />
+        </div>
+      </AbsoluteFill>
+    </StaticMgMeasure>}
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
       <div style={{ width: child.width, height: child.height, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
         <Sequence from={dynamicFrom} durationInFrames={childDuration} layout="none">
@@ -77,6 +93,7 @@ function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, fr
         </Sequence>
       </div>
     </AbsoluteFill>
+    </>
   );
 }
 
@@ -327,10 +344,10 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           <ClipWrapper item={item} frameOffset={-eb} hiddenByCaptions={hiddenByCaptions}>
             {(borderRadius) => item.kind === 'sequence'
               ? <VisualClipSurface item={item} fit={fit} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius}>
-                  <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} />
+                  <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} measure={environment.isPlayer && item.id === selectedItemId && !!mgLayoutEnabled(item)} />
                 </VisualClipSurface>
               : item.kind === 'motion-graphic'
-              ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} borderRadius={borderRadius} />
+              ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} borderRadius={borderRadius} measure={environment.isPlayer && item.id === selectedItemId} />
               : item.kind === 'text'
               ? <TextLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} />
               : item.kind === 'solid'

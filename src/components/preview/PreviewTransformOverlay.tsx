@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { PlayerRef } from '@remotion/player';
 import type { ClipCrop, ClipTransform, KeyframeProp, TimelineItem, TimelineState } from '../../editor/types';
+import { cornerScale, mgLayoutEnabled } from '../../editor/mgLayoutGeometry';
 import { t } from '../../i18n/locale';
 import {
   constrainMoveDeltaToAxis,
@@ -55,6 +56,8 @@ interface GestureState {
   edge?: PreviewScaleEdge;
   /** Crop snapshot at pointer-down (edge crop keeps the opposite side fixed). */
   startCrop?: ClipCrop;
+  corner?: number;
+  baseRect?: {x:number;y:number;width:number;height:number};
   startUi: PreviewPoint;
   /** Latest pointer position in overlay UI space (for Shift keyup/keydown without move). */
   lastUi: PreviewPoint;
@@ -121,6 +124,8 @@ export function PreviewTransformOverlay({
   const rootRef = useRef<HTMLDivElement>(null);
   const [frame, setFrame] = useState(() => Math.round(playerRef.current?.getCurrentFrame() ?? 0));
   const [previewSize, setPreviewSize] = useState<PreviewSize>({ width: state.width, height: state.height });
+  const [boundsVersion, setBoundsVersion] = useState(0);
+  useEffect(() => { const refresh = () => setBoundsVersion(n => n + 1); window.addEventListener('xmt-mg-bounds', refresh); return () => window.removeEventListener('xmt-mg-bounds', refresh); }, []);
   const [textAutoEdit, setTextAutoEdit] = useState(false);
   const lastClickRef = useRef<{ id: string; at: number } | null>(null);
   const cycleRef = useRef<ClickCycleState | null>(null);
@@ -171,7 +176,7 @@ export function PreviewTransformOverlay({
   );
   const selection = useMemo(
     () => selectedCandidate ? previewCandidateGeometry(state, selectedCandidate) : null,
-    [selectedCandidate, state],
+    [selectedCandidate, state, boundsVersion],
   );
 
   useEffect(() => {
@@ -193,7 +198,9 @@ export function PreviewTransformOverlay({
     if (!pending) return;
     const patch: ClipTransform = {};
     for (const [prop, value] of Object.entries(pending.values) as Array<[TransformWriteProp, number]>) {
-      if (pending.item.keyframes?.[prop]?.length) {
+      if (mgLayoutEnabled(pending.item)) {
+        patch[prop] = value;
+      } else if (pending.item.keyframes?.[prop]?.length) {
         onSetItemKeyframe(pending.item.id, prop, pending.localFrame, value);
       } else {
         patch[prop] = value;
@@ -204,6 +211,19 @@ export function PreviewTransformOverlay({
   }, [onSetItemKeyframe, onSetItemTransform]);
 
   const queueValues = useCallback((pending: PendingValues) => {
+    if (mgLayoutEnabled(pending.item)) {
+      const g = gestureRef.current;
+      if (g) {
+        const ratio = (pending.values.scale ?? g.transform.scale) / Math.max(.0001,g.transform.scale);
+        const base = pending.item.transform ?? {};
+        if (pending.values.x !== undefined) pending.values.x = (base.x ?? 0) + pending.values.x - g.transform.x + (ratio-1)*((base.x ?? 0)-g.transform.x);
+        if (pending.values.y !== undefined) pending.values.y = (base.y ?? 0) + pending.values.y - g.transform.y + (ratio-1)*((base.y ?? 0)-g.transform.y);
+        if (pending.values.scale !== undefined) {
+          pending.values.scale = (base.scale ?? 1)*ratio;
+          delete pending.values.scaleX; delete pending.values.scaleY;
+        }
+      }
+    }
     pendingRef.current = pending;
     if (commitRafRef.current) return;
     commitRafRef.current = requestAnimationFrame(() => {
@@ -282,12 +302,11 @@ export function PreviewTransformOverlay({
       queueValues({
         item: gesture.item,
         localFrame: gesture.localFrame,
-        values: uniformScaleAxesPreviewTransform(
-          gesture.transform,
-          gesture.center,
-          gesture.startComposition,
-          currentComposition,
-        ),
+        values: mgLayoutEnabled(gesture.item) && gesture.corner !== undefined && gesture.baseRect
+          ? cornerScale({x:gesture.transform.x,y:gesture.transform.y,scale:gesture.transform.scale},
+              {x:gesture.baseRect.x/state.width,y:gesture.baseRect.y/state.height,w:gesture.baseRect.width/state.width,h:gesture.baseRect.height/state.height},
+              gesture.corner, {x:currentComposition.x/state.width,y:currentComposition.y/state.height})
+          : uniformScaleAxesPreviewTransform(gesture.transform,gesture.center,gesture.startComposition,currentComposition),
       });
     } else if (gesture.mode === 'crop-edge' && gesture.edge) {
       const { crop } = edgeCropPreviewTransform(
@@ -361,6 +380,8 @@ export function PreviewTransformOverlay({
       pointerId: event.pointerId,
       item: candidate.item,
       mode,
+      corner: modeFromHandle?.mode === 'scale' ? Number((event.target as HTMLElement).closest<HTMLElement>('[data-preview-handle]')?.dataset.previewHandle?.split('-')[1]) : undefined,
+      baseRect: geometry.baseRect,
       edge,
       startCrop: candidate.item.transform?.crop,
       startUi: pointUi,
@@ -453,6 +474,12 @@ export function PreviewTransformOverlay({
             preserveAspectRatio="none"
             aria-hidden="true"
           >
+            {mgLayoutEnabled(selectedCandidate!.item) && <g stroke="#22d3ee66" strokeDasharray="6 6" fill="none" strokeWidth="1" vectorEffect="non-scaling-stroke">
+              <rect x="0" y="0" width={state.width} height={state.height} />
+              <line x1={state.width/2} y1="0" x2={state.width/2} y2={state.height} />
+              <line x1="0" y1={state.height/2} x2={state.width} y2={state.height/2} />
+              <rect x="0" y={state.height-(state.height>state.width?166:141)} width={state.width} height={state.height>state.width?166:141} fill="#fb718511" stroke="#fb7185aa" />
+            </g>}
             <polygon
               data-preview-selection={selectedCandidate!.item.id}
               points={selection.corners.map((point) => `${point.x},${point.y}`).join(' ')}
@@ -481,7 +508,7 @@ export function PreviewTransformOverlay({
               style={percentPosition(point)}
             />
           ))}
-          {edgeMidpoints && edgeHandles.map(({ edge, label, className }) => (
+          {!mgLayoutEnabled(selectedCandidate!.item) && edgeMidpoints && edgeHandles.map(({ edge, label, className }) => (
             <button
               key={edge}
               type="button"
@@ -491,13 +518,13 @@ export function PreviewTransformOverlay({
               style={percentPosition(edgeMidpoints[edge])}
             />
           ))}
-          <button
+          {!mgLayoutEnabled(selectedCandidate!.item) && <button
             type="button"
             className="cc-preview-transform-handle cc-preview-transform-rotate"
             data-preview-handle="rotate"
             aria-label={t('旋转片段')}
             style={percentPosition(rotateHandle.handle)}
-          />
+          />}
           {onItemPropChange
             && selectedCandidate
             && previewTextEditFields(selectedCandidate.item)

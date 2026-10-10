@@ -1,4 +1,5 @@
 import { AbsoluteFill } from 'remotion';
+import { StaticMgMeasure } from './StaticMgMeasure';
 import { getCompiledTemplate } from '../template-host';
 import type { AspectFit, TimelineItem, Watermark } from './types';
 import { VisualClipSurface } from './TimelineMediaLayer';
@@ -57,12 +58,13 @@ export function TextLayer({ item, canvasW, canvasH, fit }: {
   );
 }
 
-export function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: {
+export function ItemLayer({ item, canvasW, canvasH, fit, borderRadius, measure = false }: {
   item: TimelineItem;
   canvasW: number;
   canvasH: number;
   fit: AspectFit;
   borderRadius: number;
+  measure?: boolean;
 }) {
   const dw = item.width ?? 1920;
   const dh = item.height ?? 1080;
@@ -70,6 +72,14 @@ export function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: {
   try {
     const Template = getCompiledTemplate(item.code ?? '');
     return (
+      <>
+      {measure && <StaticMgMeasure id={item.id} width={canvasW} height={canvasH}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
+            <Template item={{ props: { ...item.props, motion: 'none', events: [] }, width: dw, height: dh }} />
+          </div>
+        </div>
+      </StaticMgMeasure>}
       <VisualClipSurface item={item} fit={fit} canvasW={canvasW} canvasH={canvasH} borderRadius={borderRadius}>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ width: dw, height: dh, position: 'relative', flexShrink: 0, transform: `scale(${scale})` }}>
@@ -77,6 +87,7 @@ export function ItemLayer({ item, canvasW, canvasH, fit, borderRadius }: {
           </div>
         </div>
       </VisualClipSurface>
+      </>
     );
   } catch (error) {
     return (

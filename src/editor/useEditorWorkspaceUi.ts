@@ -1,3 +1,4 @@
+import { insertWithCurrentLayout } from '../xmt/mgLayoutDefaults';
 import {
   useCallback,
   useEffect,
@@ -100,7 +101,7 @@ export function useEditorWorkspacePanels({
   const [chatCollapsed, setChatCollapsed] = usePersistedState('cc.chatCollapsed', false);
   const panelLayout = useEditorPanelLayout(chatCollapsed);
   const [inspectorCollapsed, setInspectorCollapsed] = usePersistedState('cc.inspectorCollapsed', false);
-  const addTemplate = useCallback((template: Tpl) => commands.addMotionGraphic(template), [commands]);
+  const addTemplate = useCallback((template: Tpl) => insertWithCurrentLayout(template.id, () => commands.addMotionGraphic(template)), [commands]);
 
   return {
     chatCollapsed,

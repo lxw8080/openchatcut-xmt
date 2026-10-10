@@ -1,3 +1,5 @@
+import { layoutDefault, loadLayoutDefaults } from '../../xmt/mgLayoutDefaults';
+import { xmtHost } from '../../xmt/host';
 /** Execute reviewed XMT component nodes as native, editable child timelines.
  * The XMT shared builder owns component macros; this entry owns ms -> frames.
  * No JSX is accepted in the call. MG code comes exclusively from ctx.templates.
@@ -23,6 +25,7 @@ const rect = (raw: Data) => {
 export async function execVisualCompositionTool(name: string, args: Data, ctx: AgentContext) {
   if (name !== 'edit_visual_composition') return { error: `unknown tool ${name}` };
   try {
+    if (args.action === 'create' && typeof window !== 'undefined' && xmtHost()) await loadLayoutDefaults();
     const before = ctx.getDoc();
     const doc = jsonCopy(before);
     const owner = doc.timelines.find((t) => t.id === doc.activeTimelineId)!;
@@ -71,9 +74,9 @@ export async function execVisualCompositionTool(name: string, args: Data, ctx: A
     const offset = finite(args.intro_ms ?? 0, 0, 3600000);
     const start = toFrame(spec.start_ms + offset);
     const duration = Math.max(1, toFrame(spec.end_ms + offset) - start);
-    const window = rect(spec.rect);
-    const width = Math.max(1, Math.round(owner.width * window.w));
-    const height = Math.max(1, Math.round(owner.height * window.h));
+    const compositionWindow = rect(spec.rect);
+    const width = Math.max(1, Math.round(owner.width * compositionWindow.w));
+    const height = Math.max(1, Math.round(owner.height * compositionWindow.h));
     const nativeElements: Data[] = [];
     const knownIds = new Set([...doc.timelines.map((t) => t.id), ...doc.timelines.flatMap((t) => t.items.map((i) => i.id))]);
     const checkedId = (suffix: string) => {
@@ -151,7 +154,16 @@ export async function execVisualCompositionTool(name: string, args: Data, ctx: A
       const element = timeline(`${node.id}_group`, Math.max(1, Math.round(width * box.w)), Math.max(1, Math.round(height * box.h)));
       const groupItem = seq(`${node.id}_instance`, element, box);
       groupItem.keyframes = { ...groupCues(node.events, groupItem.transform), ...motion(node.motion, groupItem.transform) };
-      groupItem.props = { _xmt: meta(node.id, node) };
+      groupItem.props = { _xmt: { ...meta(node.id, node), layoutTemplateKey: 'xmt-composition-node-v1#' + node.component, layoutSystemTransform: { ...groupItem.transform } } };
+      const savedLayout = layoutDefault('xmt-composition-node-v1#' + node.component, width, height);
+      if (savedLayout) {
+        for (const prop of ['x','y','scale'] as const) {
+          const base = groupItem.transform?.[prop] ?? (prop === 'scale' ? 1 : 0);
+          groupItem.transform = { ...groupItem.transform, [prop]: prop === 'scale' ? base * savedLayout[prop] : base * savedLayout.scale + savedLayout[prop] };
+          for (const key of groupItem.keyframes?.[prop] ?? []) key.value = prop === 'scale' ? key.value * savedLayout[prop] : key.value * savedLayout.scale + savedLayout[prop];
+        }
+        (groupItem.props._xmt as Data).layoutDefaultApplied = true;
+      }
       put(group, groupItem);
       for (const part of node.parts) {
         if (!identifier(part.id)) fail('Invalid visual part id');
@@ -205,7 +217,7 @@ export async function execVisualCompositionTool(name: string, args: Data, ctx: A
         put(element, item);
       }
     }
-    const outer = seq('instance', group, window);
+    const outer = seq('instance', group, compositionWindow);
     outer.startFrame = start;
     outer.keyframes = motion(spec.motion, outer.transform);
     outer.props = { _xmt: { visualCompositionVersion: 1, placement: 'overlay', matchStatus: 'graphic',

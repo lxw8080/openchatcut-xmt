@@ -50,6 +50,10 @@ export interface InspectorPanelProps {
   onItemPropChange: (key: string, value: unknown) => void;
   onItemVolumeChange: (volume: number) => void;
   onItemFadeChange: (fade: FadePatch) => void;
+  layoutWidth?: number;
+  layoutHeight?: number;
+  onItemLayoutChange?: (patch: ClipTransform) => void;
+  onEditLayoutComponents?: () => void;
   onItemTransformChange: (patch: ClipTransform) => void;
   onItemFiltersChange: (patch: ClipFilters) => void;
   backgroundFillAvailable?: boolean;

@@ -6,6 +6,8 @@ import { KEYFRAME_PROPS, getKeyframePropertyDefinition } from '../../editor/keyf
 import { inspectorMixedValue } from '../../editor/inspectorBatch';
 import { useT } from '../../i18n/locale';
 import { PropSchemaField } from './PropSchemaField';
+import { mgLayoutEnabled } from '../../editor/mgLayoutGeometry';
+import { MgLayoutControls } from './MgLayoutControls';
 import { TransformControl, VolumeControl } from './InspectorKeyframeControls';
 import { FadeControl, IsolateVoiceControl, SpeedControl, TextControl, TransitionControl, ZoomControl } from './InspectorMediaControls';
 import { BackgroundFillControl, EffectsControl, FilterControl, SectionLabel } from './InspectorVisualControls';
@@ -143,8 +145,9 @@ function BasicTab({ panel, item, schema, playheadLocal }: InspectorContentProps)
           />
         </>
       )}
+      <MgLayoutControls item={item} panel={panel} />
       {item.kind === 'text' && panel.selectedItems.every((entry) => entry.kind === 'text') && <><SectionLabel>{t('文字')}</SectionLabel><TextControl item={item} mixed={(key) => isMixed(panel, (entry) => entry.props?.[key])} onPropChange={panel.onItemPropChange} /></>}
-      {panel.selectedItems.every((entry) => entry.kind !== 'audio') && <><SectionLabel onReset={() => panel.onResetItemKeyframes(transformProps)} resetDisabled={resetDisabled && !transformProps.some((prop) => isMixed(panel, (entry) => getKeyframePropertyDefinition(prop).getBaseValue(entry)))}>{t('变换')}</SectionLabel><TransformControl item={item} mixed={(prop) => {
+      {(!mgLayoutEnabled(item) || panel.selectedItems.length > 1) && panel.selectedItems.every((entry) => entry.kind !== 'audio') && <><SectionLabel onReset={() => panel.onResetItemKeyframes(transformProps)} resetDisabled={resetDisabled && !transformProps.some((prop) => isMixed(panel, (entry) => getKeyframePropertyDefinition(prop).getBaseValue(entry)))}>{t('变换')}</SectionLabel><TransformControl item={item} mixed={(prop) => {
         const definition = getKeyframePropertyDefinition(prop);
         return isMixed(panel, (entry) => entry.keyframes?.[prop] ?? definition.getBaseValue(entry));
       }} onChange={panel.onItemTransformChange} onReset={panel.onResetItemKeyframes} kf={{
