@@ -1,0 +1,208 @@
+{
+  "activeTimelineId": "main",
+  "assets": [],
+  "mediaFolders": [],
+  "timelines": [
+    {
+      "fit": "contain",
+      "fps": 30,
+      "height": 1080,
+      "id": "main",
+      "items": [
+        {
+          "durationInFrames": 90,
+          "id": "shot-000",
+          "kind": "solid",
+          "name": "⚠ 缺少匹配素材",
+          "props": {
+            "_xmt": {
+              "assetId": null,
+              "fillerReason": null,
+              "fitMode": "blur",
+              "fitModeApplied": true,
+              "matchLevel": 1,
+              "matchReason": null,
+              "matchScore": null,
+              "matchStatus": "matched",
+              "scriptSegmentId": "script_001",
+              "shotRole": "primary",
+              "videoSegmentId": 11
+            },
+            "color": "#1a1a1a"
+          },
+          "startFrame": 0,
+          "track": "V1"
+        },
+        {
+          "durationInFrames": 90,
+          "id": "shot-001",
+          "kind": "solid",
+          "name": "⚠ 缺少匹配素材",
+          "props": {
+            "_xmt": {
+              "assetId": null,
+              "fillerReason": null,
+              "fitMode": "blur",
+              "fitModeApplied": true,
+              "matchLevel": null,
+              "matchReason": null,
+              "matchScore": null,
+              "matchStatus": "no_match",
+              "scriptSegmentId": "script_001",
+              "shotRole": null,
+              "videoSegmentId": null
+            },
+            "color": "#1a1a1a"
+          },
+          "startFrame": 90,
+          "track": "V1"
+        },
+        {
+          "code": "/* xmt template code omitted */",
+          "durationInFrames": 57,
+          "height": 1080,
+          "id": "overlay-001",
+          "kind": "motion-graphic",
+          "name": "叠放动效",
+          "props": {
+            "_xmt": {
+              "assetId": null,
+              "beat": 1,
+              "fallback": "weak_footage",
+              "graphicText": "夺冠",
+              "matchStatus": "graphic",
+              "origin": "fallback_pool",
+              "overlayKind": "keyword",
+              "placement": "overlay",
+              "scriptSegmentId": "script_001"
+            },
+            "accentColor": "#ff4d6d",
+            "backgroundColor": "rgba(10,12,24,0.8)",
+            "bodyFont": "Noto Sans SC",
+            "fontSize": 72.6,
+            "headingFont": "Noto Sans SC",
+            "inFrames": 11,
+            "intensity": 0.5,
+            "layout": "landscape",
+            "motion": "fade-up",
+            "outFrames": 7,
+            "primaryColor": "#1a1a2e",
+            "safeBottomPx": 141,
+            "secondaryColor": "#c8c8d8",
+            "text": "夺冠",
+            "textColor": "#ffffff",
+            "titleFont": "Smiley Sans"
+          },
+          "startFrame": 3,
+          "templateId": "xmt-ov-keyword",
+          "track": "V2",
+          "width": 1920
+        },
+        {
+          "code": "/* xmt template code omitted */",
+          "durationInFrames": 57,
+          "height": 1080,
+          "id": "scrim-001",
+          "kind": "motion-graphic",
+          "name": "压暗·弱素材",
+          "props": {
+            "_xmt": {
+              "backdrop": "scrim",
+              "pairedItemId": "overlay-001",
+              "placement": "backdrop",
+              "scriptSegmentId": "script_001"
+            },
+            "accentColor": "#ff4d6d",
+            "alpha": 0.5,
+            "backgroundColor": "#0d1226",
+            "bodyFont": "Noto Sans SC",
+            "headingFont": "Noto Sans SC",
+            "inFrames": 11,
+            "layout": "landscape",
+            "mode": "scrim",
+            "motion": "fade-up",
+            "outFrames": 7,
+            "pattern": "grid",
+            "primaryColor": "#1a1a2e",
+            "safeBottomPx": 141,
+            "secondaryColor": "#8a93b8",
+            "seed": 0
+          },
+          "startFrame": 3,
+          "templateId": "xmt-backdrop",
+          "track": "VB",
+          "width": 1920
+        },
+        {
+          "code": "/* xmt template code omitted */",
+          "durationInFrames": 90,
+          "height": 1080,
+          "id": "backdrop-001",
+          "kind": "motion-graphic",
+          "name": "衬底·缺素材兜底",
+          "props": {
+            "_xmt": {
+              "backdrop": "bed",
+              "pairedItemId": "shot-001",
+              "placement": "backdrop",
+              "scriptSegmentId": "script_001"
+            },
+            "accentColor": "#ff4d6d",
+            "alpha": 0.5,
+            "backgroundColor": "#0d1226",
+            "bodyFont": "Noto Sans SC",
+            "headingFont": "Noto Sans SC",
+            "inFrames": 12,
+            "layout": "landscape",
+            "mode": "bed",
+            "motion": "fade-up",
+            "outFrames": 9,
+            "pattern": "dots",
+            "primaryColor": "#1a1a2e",
+            "safeBottomPx": 141,
+            "secondaryColor": "#8a93b8",
+            "seed": 0
+          },
+          "startFrame": 90,
+          "templateId": "xmt-backdrop",
+          "track": "VB",
+          "width": 1920
+        }
+      ],
+      "name": "AI 成片",
+      "order": 0,
+      "selectedId": null,
+      "trackOrder": [
+        "V2",
+        "VB",
+        "V1",
+        "A1",
+        "C1"
+      ],
+      "tracks": {
+        "A1": {
+          "kind": "audio",
+          "name": "配音"
+        },
+        "C1": {
+          "kind": "caption",
+          "name": "字幕"
+        },
+        "V1": {
+          "kind": "video",
+          "name": "主视频"
+        },
+        "V2": {
+          "kind": "video",
+          "name": "叠层"
+        },
+        "VB": {
+          "kind": "video",
+          "name": "衬底"
+        }
+      },
+      "width": 1920
+    }
+  ],
+  "version": 3
+}

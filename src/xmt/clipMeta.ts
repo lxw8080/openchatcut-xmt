@@ -11,7 +11,35 @@ export interface XmtClipMeta {
   assetId?: number | null;
 }
 
+export interface XmtBackdropMeta {
+  placement?: string;
+  backdrop?: string;
+  pairedItemId?: string;
+}
+
+/** 这一条是不是 XMT 的衬底层（压暗 / 缺素材兜底床）。
+ *
+ * 衬底是布景不是素材条目：它跟着被配对的那一条走，自己没有 matchStatus、
+ * 不该上「替换素材」菜单、也不该被字幕开关隐藏。判据只看
+ * `props._xmt.placement === 'backdrop'`，不要求 scriptSegmentId——
+ * bridge 写出来的衬底一定带 placement，别的工程里同名键也按同样语义读。
+ */
+export function isXmtBackdrop(item: TimelineItem): boolean {
+  const meta = (item.props as { _xmt?: XmtBackdropMeta } | undefined)?._xmt;
+  return !!meta && typeof meta === 'object' && meta.placement === 'backdrop';
+}
+
+/** 衬底配对的宿主条目 id（scrim→overlay-NNN，bed→shot-NNN）；没有或为空返回 null。 */
+export function xmtBackdropPairId(item: TimelineItem): string | null {
+  const meta = (item.props as { _xmt?: XmtBackdropMeta } | undefined)?._xmt;
+  if (!meta || typeof meta !== 'object') return null;
+  const id = meta.pairedItemId;
+  return typeof id === 'string' && id ? id : null;
+}
+
 export function xmtClipMeta(item: TimelineItem): XmtClipMeta | null {
+  // 衬底不是素材条目：不给 meta，替换菜单 / 替换流程 / 图文卡判据全部自动让路。
+  if (isXmtBackdrop(item)) return null;
   const meta = (item.props as { _xmt?: XmtClipMeta } | undefined)?._xmt;
   if (!meta || typeof meta.scriptSegmentId !== 'string' || !meta.scriptSegmentId) return null;
   return meta;

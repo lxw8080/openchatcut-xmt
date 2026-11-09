@@ -9,7 +9,7 @@ import { selectTransitionPreviewAdapter, staticEffectPreviewStatus, staticPrevie
 import type { SelectedPreviewStatus, SelectedPreviewStatusListener } from '../gl/previewAdapter';
 import { captionsHiddenForRender, captionTrackEntries, CSS_TRANSITION_TYPES, defaultTrackId, isAudioTransition, isRasterMediaKind, isVisualItemKind, timelineTrackIds, trackKind } from './types';
 import { previewTextEditFields } from '../components/preview/previewTextEdit';
-import { isXmtGraphicCard } from '../xmt/clipMeta';
+import { isXmtBackdrop, isXmtGraphicCard } from '../xmt/clipMeta';
 import type { AspectFit, CssTransitionType, GlslTransitionType, ProjectDoc, Timeline, TimelineItem, TimelineState, TransitionDirection } from './types';
 import { sourceFrameAt } from './sourceLimit';
 import { nestedSequenceFrom, resolveTimelineRenderPlan, SequenceGraphError, type SequenceGraphLimits } from './sequenceGraph';
@@ -332,8 +332,12 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
         const captionsOff = captionsHiddenForRender(state);
         // 图文卡是画面内容不是字幕：关字幕是不想要逐句念白的字幕条，不是不想要记分牌。
         // 其余屏上文字片段仍跟随该开关（fork 既有策略）。
+        // 衬底（压暗 / 缺素材兜底）也是画面内容：字幕开关同样不许连带隐藏它。
+        // 旧 Windows 渲染器没有这层豁免，所以 bridge 端同时把 text/textColor/
+        // fontSize 从衬底 props 里剥掉（previewTextEditFields 因此返回 null）。
         const hiddenByCaptions = captionsOff
           && !isXmtGraphicCard(item)
+          && !isXmtBackdrop(item)
           && previewTextEditFields(item) !== null;
         const fillBackground = isBackgroundFillActive(state, item);
         // A primary photo fades its foreground, not the entire composition.

@@ -8,7 +8,9 @@
  */
 import assert from 'node:assert/strict';
 import { captionsHiddenForRender } from './timelineTypes.ts';
-import type { CaptionsData, TimelineState } from './types.ts';
+import { previewTextEditFields } from '../components/preview/previewTextEdit.ts';
+import { isXmtBackdrop, isXmtGraphicCard } from '../xmt/clipMeta.ts';
+import type { CaptionsData, TimelineItem, TimelineState } from './types.ts';
 
 const captions = (enabled: boolean): CaptionsData => ({ enabled, cues: [] } as unknown as CaptionsData);
 
@@ -53,6 +55,30 @@ assert.equal(
     },
   } as unknown as TimelineState),
   false,
+);
+
+// ── PRD 068 衬底与字幕开关（合成层 hiddenByCaptions 的两道豁免）────────────
+// 关字幕时 hiddenByCaptions = captionsOff && !isXmtGraphicCard && !isXmtBackdrop
+// && previewTextEditFields!==null。布景不是文字：判据层豁免 + 数据层（bridge 已
+// 把 text/textColor/fontSize 剥掉）previewTextEditFields 返回 null，双保险。
+const backdropItem = {
+  id: 'backdrop-001', track: 'VB', startFrame: 90, durationInFrames: 90,
+  kind: 'motion-graphic', props: {
+    _xmt: { placement: 'backdrop', backdrop: 'bed', pairedItemId: 'shot-001' },
+    mode: 'bed', pattern: 'dots', alpha: 0.5,
+  },
+} as unknown as TimelineItem;
+const plainTextMg = {
+  ...backdropItem, id: 'mg-x',
+  props: { text: '你好', textColor: '#ffffff', fontSize: 48 },
+} as unknown as TimelineItem;
+assert.equal(isXmtBackdrop(backdropItem), true);
+assert.equal(previewTextEditFields(backdropItem), null,
+  'bridge 剥过文字键后，衬底对 previewTextEditFields 不可见 → 上游渲染器也不会藏它');
+assert.equal(isXmtGraphicCard(backdropItem), false);
+assert.equal(
+  previewTextEditFields(plainTextMg) !== null, true,
+  '普通带文字的 MG 仍跟着字幕开关走（对照组不变）',
 );
 
 console.log('captionsGate.verify.ts OK');
