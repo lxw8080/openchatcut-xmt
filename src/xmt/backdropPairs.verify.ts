@@ -1,7 +1,8 @@
 /**
  * XMT 衬底（VB 轨：scrim-NNN 压暗随 overlay-NNN、backdrop-NNN 兜底床随
- * shot-NNN）是布景不是素材——宿主被删 / 换掉 / 裁开 / 挪走而衬底没跟上时，
- * reducer 必须把孤儿衬底一并收掉；宿主与衬底一起动、或只动衬底本身，则保留。
+ * shot-NNN）是布景不是素材——宿主被删 / 换掉时 reducer 把孤儿衬底一起收掉；
+ * 宿主被裁 / 挪 / 切开而衬底没跟上时，reducer 直接把衬底对齐跟随；
+ * 宿主与衬底一起动、或只动衬底本身，则保留。
  *
  * 用真实 bridge 生成的合成工程 fixture（scripts/gen_backdrop_fixture.py）：
  * shot-000（实拍槽 0..90f）、overlay-001（V2 卡 3..60f）、scrim-001（VB 3..60f）、
@@ -11,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { reduce } from '../editor/reducerTimeline.ts';
-import { pruneStaleXmtBackdrops } from './backdropPairs.ts';
+import { syncXmtBackdrops } from './backdropPairs.ts';
 import { planClipReplacement } from './replaceClip.ts';
 import type { TimelineItem, TimelineState } from '../editor/types.ts';
 import type { XmtCandidate } from './projectBridge.ts';
@@ -62,18 +63,34 @@ const apply = (s: TimelineState, next: TimelineState): TimelineState =>
   assert.equal(has(next, 'backdrop-001'), false, '床宿主被换掉（kind/src/matchStatus 变）→ bed 必须收');
 }
 
-// ── 3. 裁 / 挪 / 切开 shot-001 而衬底没跟上 → bed 收掉 ────────────────────
+// ── 3. 裁 / 挪 / 切开 shot-001 而衬底没跟上 → bed 对齐跟随 ────────────────
 {
   const s = fixtureState();
   const trimmed = reduce(s, { type: 'retime', id: 'shot-001', durationInFrames: 60 } as never);
-  assert.equal(has(trimmed, 'backdrop-001'), false, '宿主裁短没带上床 → bed 必须收');
+  assert.equal(has(trimmed, 'backdrop-001'), true, '宿主裁短没带上床 → bed 跟着裁短');
+  assert.equal(item(trimmed, 'backdrop-001').startFrame, item(trimmed, 'shot-001').startFrame);
+  assert.equal(item(trimmed, 'backdrop-001').durationInFrames, 60);
 
   const moved = reduce(s, { type: 'move', id: 'shot-001', startFrame: 120 } as never);
-  assert.equal(has(moved, 'backdrop-001'), false, '宿主挪走没带上床 → bed 必须收');
+  assert.equal(has(moved, 'backdrop-001'), true, '宿主挪走没带上床 → bed 跟着挪');
+  assert.equal(item(moved, 'backdrop-001').startFrame, 120);
 
   const split = reduce(s, { type: 'split', id: 'shot-001', atFrame: 135, newId: 'shot-001-b' } as never);
   assert.equal(has(split, 'shot-001-b'), true);
-  assert.equal(has(split, 'backdrop-001'), false, '宿主切开 → 原床不再跟随 → 收掉');
+  assert.equal(has(split, 'backdrop-001'), true, '宿主切开 → 床跟保留原 id 的左半');
+  assert.equal(item(split, 'backdrop-001').startFrame, item(split, 'shot-001').startFrame);
+  assert.equal(item(split, 'backdrop-001').durationInFrames, item(split, 'shot-001').durationInFrames);
+}
+
+// ── 3b. 裁 / 挪 overlay-001 → scrim-001 同样对齐跟随 ──────────────────────
+{
+  const s = fixtureState();
+  const trimmed = reduce(s, { type: 'retime', id: 'overlay-001', durationInFrames: 30 } as never);
+  assert.equal(has(trimmed, 'scrim-001'), true, '宿主卡裁短 → scrim 跟着裁短');
+  assert.equal(item(trimmed, 'scrim-001').durationInFrames, 30);
+
+  const moved = reduce(s, { type: 'move', id: 'overlay-001', startFrame: 10 } as never);
+  assert.equal(item(moved, 'scrim-001').startFrame, 10, '宿主卡挪走 → scrim 跟着挪');
 }
 
 // ── 4. 只动衬底本身 → 保留（手动改布景不牵连宿主）─────────────────────────
@@ -104,8 +121,8 @@ const apply = (s: TimelineState, next: TimelineState): TimelineState =>
     }], tracks: {},
   } as unknown as TimelineState;
   const next = { ...s, items: [...s.items] } as TimelineState;
-  assert.equal(pruneStaleXmtBackdrops(s, next), next, '无衬底工程必须原样返回（同一引用）');
-  assert.equal(pruneStaleXmtBackdrops(s, s), s);
+  assert.equal(syncXmtBackdrops(s, next), next, '无衬底工程必须原样返回（同一引用）');
+  assert.equal(syncXmtBackdrops(s, s), s);
   const viaReduce = reduce(s, { type: 'remove', id: 'missing' } as never);
   assert.equal(viaReduce, s, '非 XMT 工程的 no-op reduce 返回原状态');
 }

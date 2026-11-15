@@ -11,15 +11,15 @@ import { applyTrackAction } from './reducerTrackActions';
 import { applyTranscriptAction } from './reducerTranscriptActions';
 import { OVERLAP_GUARDED_ACTIONS, remapSplitTransitionEndpoints, splitTimelineItem } from './reducerOverwrite';
 import { remapSplitTimelineCaptionReferences } from '../captions/reconcileSources';
-import { pruneStaleXmtBackdrops } from '../xmt/backdropPairs';
+import { syncXmtBackdrops } from '../xmt/backdropPairs';
 
 export function reduce(s: TimelineState, a: Action): TimelineState {
   const applied = fitTimelineItems(applyAction(s, a));
   const guarded = OVERLAP_GUARDED_ACTIONS.has(a.type) && introducesTrackOverlap(s, applied)
     ? s
     : applied;
-  // XMT 衬底跟随清理：宿主被删/换/改长而衬底没跟上 → 孤儿衬底一并收掉。
-  const next = pruneStaleXmtBackdrops(s, guarded);
+  // XMT 衬底同步：宿主被删/换 → 孤儿衬底一并收；宿主被裁/挪而衬底没跟上 → 对齐跟随。
+  const next = syncXmtBackdrops(s, guarded);
   if (!TRANSITION_RECONCILING_ACTIONS.has(a.type) || !next.transitions?.length) return next;
   return { ...next, transitions: reconcileTransitions(next.items, next.transitions) };
 }
