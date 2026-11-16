@@ -76,7 +76,22 @@ export function getItemMgBounds(item: TimelineItem, width: number, height: numbe
     const w = (item.width ?? width)/width, h = (item.height ?? height)/height;
     return {x:(1-w)/2,y:(1-h)/2,w,h};
   }
-  return templateBounds.get(item.templateId + '/' + (height > width ? 'portrait' : 'landscape')) ?? FULL_BOUNDS;
+  return templateBounds.get(effectiveTemplateId(item) + '/' + (height > width ? 'portrait' : 'landscape')) ?? FULL_BOUNDS;
+}
+
+/** Scene-converted items (xmt-scene-v1) expose their original template through
+ * the item_props source root written by the pipeline converter; master-applied
+ * scenes may carry extra roots. Items with zero or several item_props source
+ * roots (hand-edited workbench scenes) have no legacy identity and return null. */
+export function effectiveTemplateId(item: {kind: string; templateId?: string; props?: Record<string, unknown> }): string | null {
+  if (item.kind !== 'motion-graphic') return null;
+  if (item.templateId !== 'xmt-scene-v1') return item.templateId ?? null;
+  const roots = (item.props?.scene as {roots?: Array<Record<string, unknown>>} | undefined)?.roots ?? [];
+  const primary = roots.filter((r) => r.type === 'source' && r.item_props === true);
+  if (primary.length === 1) {
+    return typeof primary[0].source === 'string' ? primary[0].source : null;
+  }
+  return null;
 }
 export function publishMgBounds(id: string, bounds: Bounds | null) {
   if (!bounds) return;
@@ -88,7 +103,8 @@ export function publishMgBounds(id: string, bounds: Bounds | null) {
 export function mgLayoutKey(item: {kind: string; templateId?: string; props?: Record<string, unknown> }): string | null {
   const meta = item.props?._xmt as Record<string, unknown> | undefined;
   if (typeof meta?.layoutTemplateKey === 'string') return meta.layoutTemplateKey;
-  return item.kind === 'motion-graphic' && item.templateId?.startsWith('xmt-') && item.templateId !== 'xmt-composition-node-v1' ? item.templateId : null;
+  const tid = effectiveTemplateId(item);
+  return item.kind === 'motion-graphic' && tid?.startsWith('xmt-') && tid !== 'xmt-composition-node-v1' ? tid : null;
 }
 export function mgLayoutEnabled(item: {kind: string; templateId?: string; props?: Record<string, unknown> }): boolean {
   const meta = item.props?._xmt as Record<string, unknown> | undefined;

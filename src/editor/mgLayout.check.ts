@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cornerScale, layoutBounds, scaleAt, layoutWarnings, annotateLayoutKeys } from './mgLayoutGeometry';
+import { cornerScale, layoutBounds, scaleAt, layoutWarnings, annotateLayoutKeys, effectiveTemplateId, mgLayoutKey, registerTemplateBounds, getItemMgBounds } from './mgLayoutGeometry';
 import { mgLayoutActions } from './mgLayoutActions';
 import { effectivePreviewTransform } from '../components/preview/previewTransform';
 import { historyReduce } from './reducerHistory';
@@ -73,4 +73,25 @@ const compositionResult=await execVisualCompositionTool('edit_visual_composition
 assert.equal(compositionResult.ok,true,JSON.stringify(compositionResult));
 assert.deepEqual(document.timelines.flatMap(t=>t.items).find(i=>i.id==='vc_aspect_heading_instance')?.transform,{x:12,y:-8,scale:.6});
 Reflect.deleteProperty(globalThis,'window');
+// Scene-converted items keep their legacy layout key through the item_props root;
+// hand-edited scenes, composition parts and plain items behave as before.
+const sceneItem={id:'sc1',kind:'motion-graphic' as const,templateId:'xmt-scene-v1',props:{scene:{roots:[{id:'a',type:'source',source:'xmt-ov-score-bug',props:{},item_props:true}],overrides:{},groups:[]}}};
+assert.equal(effectiveTemplateId(sceneItem),'xmt-ov-score-bug');
+assert.equal(mgLayoutKey(sceneItem),'xmt-ov-score-bug');
+const handScene={...sceneItem,id:'sc2',props:{scene:{roots:[{id:'a',type:'source',source:'xmt-ov-score-bug',props:{color:'#fff'}},{id:'b',type:'source',source:'xmt-ov-score-bug',props:{}}],overrides:{},groups:[]}}};
+assert.equal(effectiveTemplateId(handScene),null);
+assert.equal(mgLayoutKey(handScene),null);
+const noItemProps={...sceneItem,id:'sc3',props:{scene:{roots:[{id:'a',type:'source',source:'xmt-ov-score-bug',props:{x:1}}],overrides:{},groups:[]}}};
+assert.equal(effectiveTemplateId(noItemProps),null);
+const masterScene={...sceneItem,id:'sc4',props:{scene:{roots:[{id:'a',type:'source',source:'xmt-ov-score-bug',props:{},item_props:true},{id:'b',type:'text',props:{text:'加'}}],overrides:{},groups:[]}}};
+assert.equal(effectiveTemplateId(masterScene),'xmt-ov-score-bug');
+assert.equal(mgLayoutKey(masterScene),'xmt-ov-score-bug');
+const twoPrimary={...sceneItem,id:'sc5',props:{scene:{roots:[{id:'a',type:'source',source:'xmt-ov-score-bug',props:{},item_props:true},{id:'b',type:'source',source:'xmt-ov-duo-compare',props:{},item_props:true}],overrides:{},groups:[]}}};
+assert.equal(effectiveTemplateId(twoPrimary),null);
+assert.equal(mgLayoutKey({id:'c1',kind:'motion-graphic',templateId:'xmt-composition-node-v1',props:{}}),null);
+assert.equal(mgLayoutKey({id:'m1',kind:'motion-graphic',templateId:'xmt-lower-third',props:{}}),'xmt-lower-third');
+assert.equal(mgLayoutKey({...sceneItem,props:{...sceneItem.props,_xmt:{layoutTemplateKey:'xmt-composition-node-v1#table'}}}),'xmt-composition-node-v1#table');
+registerTemplateBounds('xmt-ov-score-bug','landscape',[.1,.8,.9,.95]);
+const sceneBounds=getItemMgBounds(sceneItem as TimelineItem,1920,1080);
+close(sceneBounds.x,.1);close(sceneBounds.y,.8);close(sceneBounds.w,.8);close(sceneBounds.h,.15);
 console.log('MG geometry, linked curves, history, refresh and new insertion passed');
