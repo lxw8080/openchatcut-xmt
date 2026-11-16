@@ -3,7 +3,7 @@
 
 export type IconName =
   | 'plus' | 'cursor' | 'trim' | 'rateStretch' | 'blade' | 'scissors' | 'magnet' | 'mic' | 'chevronDown' | 'check' | 'brush' | 'cloud' | 'insert'
-  | 'play' | 'pause' | 'text' | 'copy' | 'trash' | 'bookmark' | 'prev' | 'next'
+  | 'play' | 'pause' | 'text' | 'copy' | 'trash' | 'bookmark' | 'prev' | 'next' | 'back' | 'export'
   | 'zoomOut' | 'zoomIn' | 'fit' | 'aspect' | 'captions' | 'fullscreen'
   | 'eye' | 'eyeOff' | 'volume' | 'volumeOff' | 'lock' | 'unlock'
   | 'home' | 'sparkles' | 'sliders' | 'bookOpen' | 'thumbUp' | 'thumbDown' | 'arrowUp' | 'arrowDown'
@@ -19,6 +19,8 @@ const FILL = new Set<IconName>(['play', 'pause', 'cursor', 'bookmark']);
 
 const P: Record<IconName, string> = {
   plus: 'M12 5v14M5 12h14',
+  back: 'm15 18-6-6 6-6',
+  export: 'M12 16V3m0 0L7 8m5-5 5 5M5 13v7h14v-7',
   // lucide wand-sparkles simplified (creative mode)
   wand: 'M15 4V2 M15 16v-2 M8 9h2 M20 9h2 M17.8 11.8L19 13 M17.8 6.2L19 5 M12.2 6.2L11 5 M3 21l9-9',
   cursor: 'M5 3l6 15 2-6 6-2z',

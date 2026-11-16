@@ -279,13 +279,14 @@ export function ReplaceClipDialog({ item, commands, timeline, onClose }: Replace
 
   return (
     <div
+      className="cc-xmt-replace-backdrop"
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.45)',
         display: 'grid', placeItems: 'center',
       }}
     >
-      <div style={{
+      <div className="cc-xmt-replace-panel" style={{
         width: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
         background: theme.panel, border: `0.5px solid ${theme.borderLight}`, borderRadius: 6,
         boxShadow: `0 12px 36px ${themeAlpha.shadow(0.55)}`, overflow: 'hidden',

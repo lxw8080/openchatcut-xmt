@@ -13,6 +13,9 @@ import { DesignStylePanel } from '../components/settings/DesignStylePanel';
 import { VersionHistory } from '../components/VersionHistory';
 import { ShortcutsDialog } from '../shortcuts/ShortcutsDialog';
 import { AppToastHost } from '../ui/AppToastHost';
+import { MobileEditorWorkspace } from './MobileEditorWorkspace';
+import { useMobileEditorLayout } from './useMobileEditorLayout';
+import './mobile-editor.css';
 
 export interface EditorWorkspaceViewProps {
   gridTemplateColumns: string;
@@ -47,7 +50,7 @@ function renderPreview(props: EditorWorkspaceViewProps) {
   return (
     <div className="cc-preview-workspace" style={{ gridColumn: 5, gridRow: 2 }}>
       <PreviewPanel {...props.previewPanel} />
-      {props.inspectorPanel && <InspectorPanel {...props.inspectorPanel} />}
+      {props.inspectorPanel && !props.inspectorPanel.collapsed && <InspectorPanel {...props.inspectorPanel} />}
     </div>
   );
 }
@@ -62,6 +65,8 @@ function renderTimeline(props: EditorWorkspaceViewProps) {
 }
 
 export function EditorWorkspaceView(props: EditorWorkspaceViewProps) {
+  const mobile = useMobileEditorLayout();
+  if (mobile) return <MobileEditorWorkspace {...props} />;
   return (
     <div
       className="cc-editor-shell"

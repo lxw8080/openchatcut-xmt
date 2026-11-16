@@ -115,6 +115,8 @@ interface LibraryPanelProps {
   onAddSolid?: () => void;
   /** xmt「项目素材库」：登记库素材为媒体池资产（不拷贝、不落时间线）。 */
   onRegisterPoolAsset?: (asset: MediaAsset) => void;
+  /** Optional initial view for compact hosts; desktop keeps the media default. */
+  initialView?: 'media' | 'audio' | 'captions' | 'templates' | 'transcript' | 'effects';
   /** ⋮ menu「Generated with AI」: seed the chat with this template as a reference */
   onUseTemplateAI: (tpl: Tpl) => void;
   /** currently-selected clip — resource-library tabs apply to it */
@@ -132,12 +134,20 @@ function localizeDefaultSequenceName(name: string, t: ReturnType<typeof useT>): 
   const match = /^序列 (\d+)$/.exec(name);
   return match ? t('序列 {n}', { n: match[1]! }) : name;
 }
-export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onIngestDirectoryAsset, onTranscribeAsset, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onRelinkMediaAsset, creativeMode, onCreativeModeChange, onAddSolid, onRegisterPoolAsset, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom }: LibraryPanelProps) {
+export function LibraryPanel({ semanticScopeId, templates, onAddTemplate, onAddAudio, playerRef, fps, items, sequenceOptions, onAddSequence, trackOptions, captionTracks, onSetCaptions, onCreateCaptionTrack, onUpdateCaptions, onSetItemTranscript, onToggleWord, onCleanScript, onSetGapCap, onSetTranscriptPlayOrder, onReorderTrackItems, onClearEdits, assets, mediaFolders, usedAssetIds, offlineAssetIds, onAssetLoadError, onImportMedia, onImportMobileMedia, onIngestDirectoryAsset, onTranscribeAsset, onAddMediaItem, onAddMediaAssetsToTimeline, onUseMediaAI, onCreateMediaFolder, onRenameMediaFolder, onDeleteMediaFolder, onMoveMediaAssets, onRenameMediaAsset, onRenameMediaAssets, onSetMediaAssetFavorite, onSetMediaAssetsFavorite, onRemoveMediaAsset, onRemoveMediaAssets, onPasteMediaAssets, onRelinkMediaAsset, creativeMode, onCreativeModeChange, onAddSolid, onRegisterPoolAsset, onUseTemplateAI, selectedItem, onApplyTransition, onApplyFx, onApplyZoom, initialView = 'media' }: LibraryPanelProps) {
   const t = useT();
   const selKind = selectedItem?.kind ?? null;
   const isVisual = selKind != null && selKind !== 'audio';
-  const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>('我的素材');
-  const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>('MG 动画');
+  const initialTabs = {
+    media: ['我的素材', 'MG 动画'],
+    audio: ['资源库', '音效'],
+    captions: ['字幕', 'MG 动画'],
+    templates: ['资源库', 'MG 动画'],
+    transcript: ['文字稿', 'MG 动画'],
+    effects: ['资源库', '转场'],
+  } as const;
+  const [mainTab, setMainTab] = useState<(typeof MAIN_TABS)[number]>(initialTabs[initialView][0]);
+  const [subTab, setSubTab] = useState<(typeof SUB_TABS)[number]>(initialTabs[initialView][1]);
   const [extensionOpen, setExtensionOpen] = useState(false);
   const [directoryImportError, setDirectoryImportError] = useState<string | null>(null);
   const directoryImport = useDirectoryImport({

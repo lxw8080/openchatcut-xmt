@@ -297,7 +297,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             <PreviewSourceToggle />
           )}
           {state.items.length > 0 && (
-            <button type="button" onClick={() => setShowSafe((v) => !v)} aria-pressed={showSafe}
+            <button type="button" className="cc-preview-safe-toggle" onClick={() => setShowSafe((v) => !v)} aria-pressed={showSafe}
               title={t('切换标题/动作安全区参考框（竖屏成片构图辅助）')}
               style={{
                 fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
@@ -308,7 +308,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             </button>
           )}
           {selectedItem && (
-            <button type="button" onClick={onToggleInspector} aria-pressed={inspectorOpen}
+            <button type="button" className="cc-preview-inspector-toggle" onClick={onToggleInspector} aria-pressed={inspectorOpen}
               title={inspectorOpen ? t('收起属性') : t('展开属性')}
               style={{
                 fontSize: 11, lineHeight: 1, padding: '3px 8px', borderRadius: 5, cursor: 'pointer',
