@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../components/icons';
 import type { TimelineItem, TimelineState } from '../editor/types';
 import { useT } from '../i18n/locale';
@@ -38,6 +39,7 @@ interface ReviewPanelProps extends ReviewCommentsButtonProps {
   busy: boolean;
   error: string;
   target: ReviewOpenRequest | null;
+  anchorRef: RefObject<HTMLButtonElement | null>;
   commit: (next: ReviewComment[]) => Promise<boolean>;
   onClose: () => void;
 }
@@ -46,6 +48,7 @@ export function ReviewCommentsButton(props: ReviewCommentsButtonProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState<ReviewOpenRequest | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const { comments, busy, error, commit } = useStoredComments(props.projectId);
   const openCount = comments.filter((comment) => !comment.resolved).length;
 
@@ -62,16 +65,18 @@ export function ReviewCommentsButton(props: ReviewCommentsButtonProps) {
 
   return (
     <div style={{ position: 'relative' }}>
-      <button type="button" title={t('审阅评论')} aria-label={t('审阅评论')}
+      <button ref={buttonRef} type="button" title={t('审阅评论')} aria-label={t('审阅评论')}
+        aria-expanded={open} aria-haspopup="dialog"
         onClick={toggle}
         style={{ ...toolbarButton, color: open ? theme.text : theme.textDim, background: open ? theme.panelAlt : 'transparent' }}>
         <Icon name="clipboard" size={12} />
         <span>{t('评论')}</span>
         {openCount > 0 && <span style={countBadge}>{openCount}</span>}
       </button>
-      {open && (
+      {open && createPortal(
         <ReviewPanel {...props} comments={comments} busy={busy} error={error}
-          target={target} commit={commit} onClose={() => setOpen(false)} />
+          target={target} anchorRef={buttonRef} commit={commit} onClose={() => setOpen(false)} />,
+        document.body,
       )}
     </div>
   );
@@ -127,13 +132,32 @@ function ReviewPanel(props: ReviewPanelProps) {
   );
 
   useLayoutEffect(() => {
-    if (!props.target || !panelRef.current) return;
-    const rect = panelRef.current.getBoundingClientRect();
-    setPosition({
-      left: Math.max(8, Math.min(props.target.clientX + 8, window.innerWidth - rect.width - 8)),
-      top: Math.max(8, Math.min(props.target.clientY + 8, window.innerHeight - rect.height - 8)),
-    });
-  }, [props.target, visible.length, replyingTo, props.error]);
+    const panel = panelRef.current;
+    if (!panel) return;
+    // 脱离预览区的 overflow:hidden 和时间轴的层叠上下文，仍锚定原评论按钮。
+    const place = () => {
+      const rect = panel.getBoundingClientRect();
+      const anchor = props.anchorRef.current?.getBoundingClientRect();
+      const left = props.target ? props.target.clientX + 8 : (anchor?.right ?? rect.width + 8) - rect.width;
+      const top = props.target ? props.target.clientY + 8 : (anchor?.bottom ?? 8) + 5;
+      setPosition({
+        left: Math.max(8, Math.min(left, window.innerWidth - rect.width - 8)),
+        top: Math.max(8, Math.min(top, window.innerHeight - rect.height - 8)),
+      });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(panel);
+    const previewHeader = props.anchorRef.current?.closest('.cc-preview-header');
+    if (previewHeader) observer.observe(previewHeader);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [props.target, props.anchorRef]);
 
   const addComment = () => {
     const selectedItem = props.target
@@ -159,7 +183,7 @@ function ReviewPanel(props: ReviewPanelProps) {
 
   return (
     <div ref={panelRef} role="dialog" aria-label={t('审阅评论')}
-      style={props.target ? { ...popover, position: 'fixed', left: position.left, top: position.top, right: 'auto' } : popover}>
+      style={{ ...popover, left: position.left, top: position.top }}>
       <PanelHeader onClose={props.onClose} />
       {compositionReviewEnabled &&
         <CompositionReview timelineId={props.timelineId} state={props.state} onSeek={props.onSeek} />}
@@ -288,9 +312,10 @@ const countBadge: CSSProperties = {
   borderRadius: 7, background: theme.accent, color: theme.onAccent, fontSize: 9, fontWeight: 700,
 };
 const popover: CSSProperties = {
-  position: 'absolute', zIndex: 40, top: 27, right: 0, width: 'min(360px, calc(100vw - 32px))',
+  position: 'fixed', zIndex: 120, width: 'min(360px, calc(100vw - 32px))',
+  maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
   border: `0.5px solid ${theme.border}`, borderRadius: 8, background: theme.panel,
-  color: theme.text, boxShadow: '0 16px 42px rgba(0,0,0,0.42)', overflow: 'hidden',
+  color: theme.text, boxShadow: '0 16px 42px rgba(0,0,0,0.42)',
 };
 const header: CSSProperties = {
   height: 36, padding: '0 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',

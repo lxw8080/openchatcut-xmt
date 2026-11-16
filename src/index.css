@@ -1014,16 +1014,16 @@ button, input, select { font: inherit; }
 .cc-caption-preset-name-row button:first-of-type { background:var(--cc-accent); color:var(--cc-on-accent); }
 /* OpenChatCut publishing workbench: output navigation on the left + delivery parameters on the right. */
 .cc-export-overlay { position:fixed; inset:0; z-index:140; display:grid; place-items:center; padding:16px; background:rgba(var(--cc-shadow-rgb), 0.67); }
-.cc-export-panel { width:min(700px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:hidden; border:0.5px solid var(--cc-border-light); border-radius:6px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 16px 48px rgba(var(--cc-shadow-rgb), 0.6); }
-.cc-export-header { min-height:62px; display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:0.5px solid var(--cc-border); }
+.cc-export-panel { width:min(700px, calc(100vw - 32px)); max-height:calc(100vh - 32px); display:flex; flex-direction:column; overflow:hidden; border:0.5px solid var(--cc-border-light); border-radius:6px; background:var(--cc-panel); color:var(--cc-text); box-shadow:0 16px 48px rgba(var(--cc-shadow-rgb), 0.6); }
+.cc-export-header { min-height:62px; flex-shrink:0; display:flex; align-items:center; gap:12px; padding:11px 16px; border-bottom:0.5px solid var(--cc-border); }
 .cc-export-header > div { min-width:0; }
 .cc-export-header h2 { margin:0; color:var(--cc-text-strong); font-size:16px; line-height:1.2; letter-spacing:-.01em; }
 .cc-export-header p { max-width:560px; margin:4px 0 0; overflow:hidden; color:var(--cc-text-muted); font:11px/1.2 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow:ellipsis; white-space:nowrap; }
 .cc-export-close { width:28px; height:28px; margin-left:auto; display:grid; place-items:center; border:0; border-radius:3px; background:transparent; color:var(--cc-text-dim); cursor:pointer; }
 .cc-export-close:hover:not(:disabled) { background:var(--cc-hover); color:var(--cc-text); }
 .cc-export-close:disabled { cursor:default; opacity:.45; }
-.cc-export-layout { min-height:350px; display:grid; grid-template-columns:154px minmax(0, 1fr); }
-.cc-export-sidebar { padding:11px 8px; border-right:0.5px solid var(--cc-border); background:var(--cc-bg); }
+.cc-export-layout { min-height:min(350px, calc(100vh - 100px)); flex:1; overflow:hidden; display:grid; grid-template-columns:154px minmax(0, 1fr); }
+.cc-export-sidebar { overflow-y:auto; padding:11px 8px; border-right:0.5px solid var(--cc-border); background:var(--cc-bg); }
 .cc-export-sidebar-label { display:block; padding:0 7px 7px; color:var(--cc-text-dim); font-size:10px; font-weight:600; }
 .cc-export-tabs { display:flex; flex-direction:column; gap:2px; }
 .cc-export-tab { width:100%; min-height:42px; display:flex; align-items:center; gap:8px; padding:5px 7px; border:0.5px solid transparent; border-radius:3px; background:transparent; color:var(--cc-text-muted); text-align:left; cursor:pointer; }
@@ -1035,7 +1035,9 @@ button, input, select { font: inherit; }
 .cc-export-tab strong,.cc-export-tab small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cc-export-tab strong { color:inherit; font-size:11.5px; font-weight:650; }
 .cc-export-tab small { margin-top:2px; color:var(--cc-text-muted); font-size:9.5px; font-weight:400; }
-.cc-export-main { min-width:0; display:flex; flex-direction:column; }
+.cc-export-main { min-width:0; min-height:0; display:flex; flex-direction:column; }
+.cc-export-host-status { color:var(--cc-text-muted); font-size:12px; line-height:1.6; white-space:pre-wrap; }
+.cc-export-host-launch { align-self:flex-start; text-decoration:none; }
 .cc-export-main-header { min-height:50px; display:flex; align-items:center; gap:10px; padding:9px 16px; border-bottom:0.5px solid var(--cc-border); }
 .cc-export-main-header h3 { margin:0; color:var(--cc-text-strong); font-size:13px; }
 .cc-export-main-header p { margin:3px 0 0; color:var(--cc-text-dim); font:10px/1.2 Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -1121,10 +1123,10 @@ button, input, select { font: inherit; }
   .cc-export-overlay { padding:8px; }
   .cc-export-panel { width:calc(100vw - 16px); max-height:calc(100vh - 16px); overflow-y:auto; }
   .cc-export-header { min-height:56px; padding:10px 12px; }
-  .cc-export-layout { display:block; min-height:0; }
+  .cc-export-layout { display:block; min-height:0; flex:0 0 auto; overflow:visible; }
   .cc-export-sidebar { padding:7px; border-right:0; border-bottom:0.5px solid var(--cc-border); }
   .cc-export-sidebar-label { display:none; }
-  .cc-export-tabs { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); }
+  .cc-export-tabs { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0, 1fr); }
   .cc-export-tab { min-height:36px; justify-content:center; padding:5px 3px; }
   .cc-export-tab-icon { width:24px; height:24px; flex-basis:24px; }
   .cc-export-tab > span:last-child { display:none; }

@@ -2,6 +2,21 @@
 // 工程读写、候选替换、素材搜索全部走本站 API；编辑器永远跑在 /editor/<job>
 // 外壳里，没有独立后端。
 
+export type XmtLocalExportTarget = 'mp4' | 'jianying';
+
+export interface XmtLocalExportState {
+  busy: boolean;
+  message: string;
+  launchUrl: string;
+}
+
+// 宿主唯一持有凭证、请求与进度；导出弹窗可随时卸载，再打开继续展示同一状态。
+export interface XmtLocalExport {
+  getSnapshot: () => XmtLocalExportState;
+  subscribe: (listener: () => void) => () => void;
+  start: () => Promise<void>;
+}
+
 export interface XmtEditorHost {
   jobId: number | string;
   projectName: string | null;
@@ -15,6 +30,7 @@ export interface XmtEditorHost {
   searchUrl: string;
   libraryUrl: string;
   previewProxyEndpoint: string;
+  localExports?: Partial<Record<XmtLocalExportTarget, XmtLocalExport>>;
 }
 
 interface XmtWindow {
@@ -37,6 +53,7 @@ function normalize(value: Partial<XmtEditorHost> | undefined): XmtEditorHost | n
     searchUrl: value.searchUrl ?? '',
     libraryUrl: value.libraryUrl ?? '',
     previewProxyEndpoint: value.previewProxyEndpoint ?? '',
+    localExports: value.localExports,
   };
 }
 

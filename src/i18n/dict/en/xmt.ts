@@ -43,6 +43,19 @@ export default {
   '按标题、摘要、图中文字或项目匹配；导入后默认 5 秒': 'Matches titles, summaries, text in image or projects; imported images default to 5 seconds',
   '没有符合条件的图片素材': 'No matching image assets',
   // ── 导出：宿主没有随附 server，成片只走浏览器 ──
+  '导出剪映工程': 'Export Jianying project',
+  '使用本机导出': 'Export on this computer',
+  '剪映草稿': 'Jianying draft',
+  '可继续编辑的剪映工程': 'Editable Jianying project',
+  '在本机生成 MP4 成片': 'Create an MP4 on this computer',
+  '自动保存当前工程，并交给 XMT 本地渲染器生成剪映草稿，方便在剪映中继续编辑。':
+    'Save the current project and open XMT Local Renderer to create a draft for further editing in Jianying.',
+  '自动保存当前工程，并交给 XMT 本地渲染器在电脑上完成视频导出。':
+    'Save the current project and open XMT Local Renderer to export the video on this computer.',
+  '请先安装并配置 XMT 本地渲染器。': 'Install and configure XMT Local Renderer first.',
+  '打开 XMT 本地渲染器': 'Open XMT Local Renderer',
+  '正在准备导出…': 'Preparing export…',
+  '开始本机导出': 'Start local export',
   '浏览器 WebCodecs 导出': 'Browser WebCodecs export',
   '浏览器导出不可用：{reason}。可改用「使用本机导出」': 'Browser export unavailable: {reason}. Try "Local export" instead.',
   '本站没有服务端渲染进程，无法提取音轨或渲染 ProRes 母带；成片请用浏览器导出或「使用本机导出」':

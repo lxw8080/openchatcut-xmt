@@ -4,6 +4,9 @@ import type { TimelineState } from '../editor/types';
 import { useT } from '../i18n/locale';
 import { EXPORT_TABS } from './useExportDialogModel';
 import type { ExportTab } from './useExportWorkflow';
+import type { LocalExportTab } from '../xmt/LocalExportPanel';
+
+export type ExportDialogTab = ExportTab | LocalExportTab['key'];
 
 interface ExportDialogShellProps {
   base: string;
@@ -45,31 +48,34 @@ export function ExportDialogShell({ base, state, onClose, children }: ExportDial
 }
 
 interface ExportSidebarProps {
-  tab: ExportTab;
+  tab: ExportDialogTab;
+  localTabs: readonly LocalExportTab[];
   busy: boolean;
-  onTabChange: (tab: ExportTab) => void;
+  onTabChange: (tab: ExportDialogTab) => void;
 }
 
-export function ExportSidebar({ tab, busy, onTabChange }: ExportSidebarProps) {
+export function ExportSidebar({ tab, localTabs, busy, onTabChange }: ExportSidebarProps) {
   const t = useT();
   return (
     <aside className="cc-export-sidebar">
       <span className="cc-export-sidebar-label">{t('输出类型')}</span>
       <div className="cc-export-tabs" role="tablist" aria-label={t('输出类型')}>
-        {EXPORT_TABS.map((entry) => (
+        {[...EXPORT_TABS, ...localTabs].map((entry) => (
           <button
             type="button"
             role="tab"
             aria-selected={tab === entry.key}
             aria-controls={`cc-export-content-${entry.key}`}
             id={`cc-export-tab-${entry.key}`}
+            aria-label={t(entry.label)}
+            title={t(entry.label)}
             key={entry.key}
             className={`cc-export-tab${tab === entry.key ? ' active' : ''}`}
             onClick={() => onTabChange(entry.key)}
             disabled={busy}
           >
             <span className="cc-export-tab-icon"><Icon name={entry.icon} size={15} /></span>
-            <span><strong>{t(entry.label)}</strong><small>{entry.summary}</small></span>
+            <span><strong>{t(entry.label)}</strong><small>{t(entry.summary)}</small></span>
           </button>
         ))}
       </div>
