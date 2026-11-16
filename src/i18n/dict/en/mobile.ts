@@ -5,6 +5,7 @@ export default {
   '播放': 'Play',
   '画布比例': 'Canvas ratio',
   '全屏预览': 'Fullscreen preview',
+  '退出全屏': 'Exit fullscreen',
   '素材库': 'Media library',
   '音频': 'Audio',
   '字幕': 'Captions',

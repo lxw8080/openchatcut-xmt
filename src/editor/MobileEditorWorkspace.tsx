@@ -61,7 +61,7 @@ function MobileToolButton({ icon, label, accent, danger, disabled, onClick }: {
   );
 }
 
-function MobileTransport({ props, onOpenCanvas }: { props: EditorWorkspaceViewProps; onOpenCanvas: () => void }) {
+function MobileTransport({ props, onOpenCanvas, onFocus }: { props: EditorWorkspaceViewProps; onOpenCanvas: () => void; onFocus: () => void }) {
   const t = useT();
   const { state, playerRef } = props.previewPanel;
   const commands = props.timeline.commands;
@@ -89,11 +89,7 @@ function MobileTransport({ props, onOpenCanvas }: { props: EditorWorkspaceViewPr
       </div>
       <div className="cc-mobile-transport-right">
         <MobileIconButton icon="aspect" label={t('画布比例')} onClick={onOpenCanvas} />
-        <MobileIconButton icon="fullscreen" label={t('全屏预览')} disabled={!state.items.length} onClick={() => {
-          const player = playerRef.current;
-          if (player?.isFullscreen()) player.exitFullscreen();
-          else player?.requestFullscreen();
-        }} />
+        <MobileIconButton icon="fullscreen" label={t('全屏预览')} disabled={!state.items.length} onClick={onFocus} />
       </div>
     </div>
   );
@@ -114,6 +110,7 @@ function LibrarySheet({ view, props, onClose }: { view: MobileLibraryView; props
 export function MobileEditorWorkspace(props: EditorWorkspaceViewProps) {
   const t = useT();
   const [sheet, setSheet] = useState<SheetState>(null);
+  const [immersive, setImmersive] = useState(false);
   const [timelineCollapsed, setTimelineCollapsed] = usePersistedState('cc.mobileTimelineCollapsed', false);
   const closeSheet = useCallback(() => setSheet(null), []);
   const { state, selectedItem, playerRef } = props.previewPanel;
@@ -123,6 +120,12 @@ export function MobileEditorWorkspace(props: EditorWorkspaceViewProps) {
   useEffect(() => {
     if (!selectedItem && sheet && ['inspector', 'speed', 'volume', 'replace'].includes(sheet.kind)) closeSheet();
   }, [selectedId, selectedItem, sheet, closeSheet]);
+  useEffect(() => {
+    if (!immersive) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setImmersive(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [immersive]);
 
   const openLibrary = (view: MobileLibraryView) => setSheet({ kind: 'library', view });
   const splitSelected = () => {
@@ -186,7 +189,7 @@ export function MobileEditorWorkspace(props: EditorWorkspaceViewProps) {
   }
 
   return (
-    <div className="cc-mobile-editor">
+    <div className={`cc-mobile-editor${immersive ? ' immersive' : ''}`}>
       <header className="cc-mobile-topbar">
         <MobileIconButton icon="back" label={t('返回工程列表')} onClick={() => props.topBar.onHome?.()} />
         <div className="cc-mobile-project-title"><strong>{props.topBar.projectName}</strong><span><i />{t('自动保存')}</span></div>
@@ -199,8 +202,19 @@ export function MobileEditorWorkspace(props: EditorWorkspaceViewProps) {
         </button>
       </header>
 
-      <div className="cc-mobile-preview-wrap"><PreviewPanel {...props.previewPanel} /></div>
-      <MobileTransport props={props} onOpenCanvas={() => setSheet({ kind: 'canvas' })} />
+      <div className="cc-mobile-preview-wrap">
+        <PreviewPanel {...props.previewPanel} />
+        {immersive && (
+          <button type="button" className="cc-mobile-immersive-exit" onClick={() => setImmersive(false)}>
+            <Icon name="x" size={16} />{t('退出全屏')}
+          </button>
+        )}
+      </div>
+      <MobileTransport
+        props={props}
+        onOpenCanvas={() => setSheet({ kind: 'canvas' })}
+        onFocus={() => setImmersive(true)}
+      />
       <MobileTimeline
         state={state}
         commands={commands}
