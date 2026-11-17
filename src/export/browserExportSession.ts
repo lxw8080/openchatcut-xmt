@@ -7,6 +7,7 @@ export interface BrowserLifecycle {
   wakeLock: 'active' | 'unavailable' | 'released';
   hiddenMs: number;
   hiddenSince?: number;
+  interrupted?: boolean;
 }
 interface RecordData {
   id: string; sequence: number; status: string; startedAt: number; updatedAt: number;
@@ -84,6 +85,7 @@ export function startBrowserExportSession({ signal, onStatus, revision = 'unknow
   let hiddenMs = 0;
   let backgroundSinceProgress = Boolean(doc?.hidden);
   let finished = false;
+  let wasInterrupted = false;
   let wake: WakeLockSentinel | null = null;
   let wakePending = false;
   let wakeState: BrowserLifecycle['wakeLock'] = 'unavailable';
@@ -108,7 +110,7 @@ export function startBrowserExportSession({ signal, onStatus, revision = 'unknow
     record.elapsedMs = Math.max(0, clock - began);
     record.hiddenMs = hiddenMs + (hiddenSince === undefined ? 0 : Math.max(0, clock - hiddenSince));
     record.lifecycle = { visibility: hiddenSince === undefined ? 'visible' : 'hidden', wakeLock: wakeState,
-      hiddenMs, ...(hiddenSince !== undefined ? { hiddenSince } : {}) };
+      hiddenMs, ...(hiddenSince !== undefined ? { hiddenSince } : {}), ...(wasInterrupted ? { interrupted: true } : {}) };
     if (force || clock - lastSent >= 5000) {
       lastSent = clock;
       record.sequence += 1;
@@ -150,7 +152,8 @@ export function startBrowserExportSession({ signal, onStatus, revision = 'unknow
     record.events = record.events.slice(-60);
     lifecycle();
   };
-  const interrupted = (cause: unknown) => new ExportFailureError(createExportFailure({
+  const interrupted = (cause: unknown) => cause instanceof ExportFailureError && cause.failure.code === 'browser_background_interrupted'
+    ? cause : new ExportFailureError(createExportFailure({
     stage: 'render', code: 'browser_background_interrupted', retryable: true,
     message: `页面切入后台或熄屏后导出中断，未自动重新渲染。请保持页面在前台后重试。${cause instanceof Error ? ` 原因：${cause.message}` : ''}`,
   }));
@@ -205,11 +208,13 @@ export function startBrowserExportSession({ signal, onStatus, revision = 'unknow
     finish(status: string, error?: unknown, bytes?: number) {
       if (finished) return;
       finished = true;
+      wasInterrupted = status === 'interrupted';
       record.status = status;
       if (error) record.error = (error instanceof Error ? error.message : String(error)).slice(0, 600);
       record.outputBytes = bytes;
       record.stageMs[record.stage] = (record.stageMs[record.stage] ?? 0) + Math.max(0, now() - stageStart);
       snapshot(true);
+      if (wasInterrupted) onStatus?.({ type: 'lifecycle', lifecycle: { ...record.lifecycle } });
       active.delete(id);
       clearInterval(heartbeat);
       doc?.removeEventListener('visibilitychange', visibility);

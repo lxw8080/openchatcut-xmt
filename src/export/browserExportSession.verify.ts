@@ -32,6 +32,10 @@ try {
   clock += 2000; doc.hidden = true; doc.dispatchEvent(new Event('visibilitychange'));
   clock += 10_000; await wake.release(); doc.hidden = false; doc.dispatchEvent(new Event('visibilitychange'));
   assert.throws(() => session.checkFailure(new Error('decoder lost')), /未自动重新渲染/);
+  let interruption: unknown;
+  try { session.checkFailure(new Error('decoder lost')); } catch (error) { interruption = error; }
+  assert.throws(() => session.checkFailure(interruption), (error) => error === interruption,
+    'nested export boundaries must preserve the original interruption instead of wrapping it repeatedly');
   session.progress(51);
   assert.doesNotThrow(() => session.checkFailure(new Error('unrelated failure')));
   session.finish('rendered', undefined, 1000);

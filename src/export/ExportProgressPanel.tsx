@@ -12,6 +12,7 @@ export function formatExportDuration(milliseconds: number): string {
 }
 
 export function exportStageLabel(progress: ExportProgress, renderEngine?: RenderEngine): string {
+  if (progress.phase === 'failed' && progress.live?.lifecycle?.interrupted) return '导出已中断';
   if (progress.phase === 'queued' && renderEngine === 'server') return '等待服务端渲染';
   return EXPORT_STAGE_LABELS[exportStageKey(progress)] ?? '准备素材';
 }
