@@ -4,6 +4,7 @@ import type { ProjectDoc, TimelineItem, TimelineState } from '../editor/types';
 import type { ExportQaReport } from './quality';
 import type { ExportResolution } from './mediaSettings';
 import type { ExportFailure } from './exportFailure';
+import type { LiveExportProgress } from './exportLiveProgress';
 
 export type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
 export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed' | 'cancelled';
@@ -28,6 +29,9 @@ export interface ExportProgress {
   totalFrames?: number;
   detail?: string;
   outputSize?: number;
+  stageStartedAt?: number;
+  stageDurations?: Record<string, number>;
+  live?: LiveExportProgress;
 }
 
 export interface ExportQaUiState {

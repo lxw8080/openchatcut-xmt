@@ -189,19 +189,15 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
           activeTimelineId: capturedOptions.timelineId ?? capturedOptions.project.activeTimelineId,
         }
       : capturedOptions.state;
-    // The shared materialization preflight returns only a fully renderable
-    // selected-timeline closure; any failed reachable blob rejects before a job.
-    try {
-      capturedOptions = await materializeBlobMedia(capturedOptions, { mediaPlanSnapshot });
-    } catch (error) {
-      setSetupError(exportDestinationErrorMessage(error, t));
-      return;
-    }
     const capturedDestination = destinationState.destination;
     const jobId = exportJobs.start({
       label: filename,
       targetPath,
       async execute({ signal, setters }) {
+        setters.setProgress((current) => current ? { ...current, phase: 'preparing',
+          detail: t('准备上传素材') } : current);
+        capturedOptions = await materializeBlobMedia(capturedOptions, { mediaPlanSnapshot, signal });
+        signal.throwIfAborted();
         const operations = createWorkflowOperations(
           capturedOptions,
           autoQaEnabled,
@@ -261,7 +257,6 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
     engineReason: state.engineReason,
     cancelExport: () => {
       if (viewedJobId) exportJobs.cancel(viewedJobId);
-      browserAbortRef.current?.abort();
     },
     cancelJob: (jobId: string) => { exportJobs.cancel(jobId); },
     clock: state.clock || Date.now(),

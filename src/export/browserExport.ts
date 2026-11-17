@@ -6,10 +6,13 @@ import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
 import { collectExportMediaPlan } from './exportMediaPlan';
 import { createExportFailure, ExportFailureError } from './exportFailure';
+import { withBrowserRenderSlot } from './browserRenderQueue';
+import type { BrowserExportEvent } from './exportLiveProgress';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 /** xmt 导出加速运行时的最小接口（宿主 editor-export-acceleration.js 提供）。 */
 interface ExportAccelerationRuntime {
+  observeProgress?: (listener: (event: BrowserExportEvent) => void) => () => void;
   selectEncoder?: (input: { codec: string; width: number; height: number; bitrate?: number | 'high'; fps: number; signal?: AbortSignal }) =>
     Promise<{ hardwareAcceleration: 'prefer-hardware' | 'prefer-software'; reason?: string }>;
   beginAttempt?: (input: { codec: string; width: number; height: number; fps: number; bitrate?: number | 'high'; hardwareAcceleration: string; outputTarget: string }) => unknown;
@@ -46,6 +49,7 @@ export interface BrowserExportOptions {
   videoBitrate?: number;
   signal?: AbortSignal;
   onProgress?: (progress: RenderMediaOnWebProgress) => void;
+  onStatus?: (event: BrowserExportEvent) => void;
   loadRenderer?: () => Promise<WebRendererModule>;
   loadComposition?: () => Promise<{ TimelineComposition: ComponentType<TimelineCompositionProps> }>;
 }
@@ -215,6 +219,14 @@ async function executeBrowserRender(
   const mediaPlan = collectExportMediaPlan(project
     ? { ...project, activeTimelineId: timelineId ?? project.activeTimelineId } : state);
   const sources = [...new Set(mediaPlan.references.map((reference) => reference.source))];
+  const labels: Record<string, string> = {};
+  for (const asset of project?.assets ?? []) {
+    if (asset.src && asset.name) labels[asset.src.split(/[?#]/, 1)[0]] = asset.name;
+  }
+  for (const item of state.items) {
+    if (item.src && item.name) labels[item.src.split(/[?#]/, 1)[0]] ||= item.name;
+  }
+  options.onStatus?.({ type: 'labels', labels });
   // Invariant: loadBrowserRenderConfig rejected prores before any render config existed.
   if (codec === 'prores') throw new Error('prores must be rejected by loadBrowserRenderConfig');
   const props: TimelineCompositionProps = { state, project, timelineId, transparent: false, browserRenderer: true };
@@ -226,11 +238,15 @@ async function executeBrowserRender(
   }
   const width = Math.max(1, Math.round(state.width * config.scale));
   const height = Math.max(1, Math.round(state.height * config.scale));
+  options.onStatus?.({ type: 'stage', stage: 'encoder-check' });
   const preflight = await (runtime?.selectEncoder?.({
     codec, width, height, bitrate: config.videoBitrate, fps: state.fps, signal,
   }) ?? Promise.resolve({ hardwareAcceleration: 'prefer-hardware' as const, reason: '未加载编码预检运行时' }));
+  options.onStatus?.({ type: 'encoder', preference: preflight.hardwareAcceleration, reason: preflight.reason ?? '' });
   let projectPrepared = false;
+  let attemptNumber = 0;
   const attemptRender = async (hardwareAcceleration: 'prefer-hardware' | 'prefer-software') => {
+    attemptNumber += 1;
     const w = window as ExportFlagWindow;
     const attemptToken = runtime?.beginAttempt?.({
       codec, width, height, fps: state.fps, bitrate: config.videoBitrate,
@@ -244,11 +260,13 @@ async function executeBrowserRender(
       throwIfAborted(signal);
       // Every browser waits for server readiness and real decoding before render.
       if (!projectPrepared) {
+        options.onStatus?.({ type: 'stage', stage: 'checking' });
         await runtime?.prepareProject?.({ project: exportInputs, sources, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
         projectPrepared = true;
       }
       throwIfAborted(signal);
       runtime?.markPrepared?.(attemptToken);
+      options.onStatus?.({ type: 'stage', stage: 'rendering', attempt: attemptNumber });
       const result = await config.renderer.renderMediaOnWeb({
         composition: {
           id: 'openchatcut-timeline-browser',
@@ -279,6 +297,7 @@ async function executeBrowserRender(
         transparent: false,
       });
       throwIfAborted(signal);
+      options.onStatus?.({ type: 'stage', stage: 'finalizing' });
       const blob = await result.getBlob();
       throwIfAborted(signal);
       runtime?.finishAttempt?.(attemptToken, result, blob);
@@ -329,6 +348,8 @@ async function executeBrowserRender(
     // 只有明确的 VideoEncoder/编码器错误才值得整片软件重跑；解码、网络、
     // InputDisposedError、delayRender 失败用软件重跑只是把同一个失败慢放一遍。
     console.warn('[export] 硬件编码器运行期失败，降软件编码整片重试一次：', error);
+    options.onStatus?.({ type: 'encoder', preference: 'prefer-software',
+      reason: `硬件优先编码在运行中失败，重试改用软件优先：${error instanceof Error ? error.message : String(error)}` });
     const attempt = await attemptRender('prefer-software');
     logPath('软件（硬件编码器运行期失败后回退）');
     return attempt;
@@ -342,7 +363,16 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   const config = await loadBrowserRenderConfig(options);
   if ('status' in config) return config;
   throwIfAborted(options.signal);
-  return executeBrowserRender(options, config);
+  const dimensions = browserScaledExportDimensions(options.state, options.resolution);
+  options.onStatus?.({ type: 'output', output: { container: config.container, codec: options.codec,
+    width: dimensions.width, height: dimensions.height, fps: options.fps,
+    ...(typeof config.videoBitrate === 'number' ? { bitrate: config.videoBitrate } : {}) } });
+  return withBrowserRenderSlot(async () => {
+    const runtime = (globalThis as { __XMT_EXPORT_ACCELERATION__?: ExportAccelerationRuntime }).__XMT_EXPORT_ACCELERATION__;
+    const stop = options.onStatus ? runtime?.observeProgress?.(options.onStatus) : undefined;
+    try { return await executeBrowserRender(options, config); }
+    finally { stop?.(); }
+  }, options.signal, () => options.onStatus?.({ type: 'stage', stage: 'queued' }));
 }
 
 /** Keep fallback policy in one testable place: abort never starts a server job. */

@@ -11,6 +11,7 @@ import {
   exportFailureFrom,
   type ExportFailure,
 } from './exportFailure';
+import { transitionExportProgress } from './exportLiveProgress';
 
 export interface BackgroundExportJob {
   id: string;
@@ -97,12 +98,24 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
   const committedJobs = new Set<string>();
   const committingJobs = new Set<string>();
   const cancelRequestedJobs = new Set<string>();
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
 
   const publish = (jobs: readonly BackgroundExportJob[]) => {
     const nextActiveCount = jobs.filter((job) => !TERMINAL_PHASE[job.progress.phase]).length;
     const activeCountChanged = nextActiveCount !== activeCount;
     activeCount = nextActiveCount;
     snapshot = Object.freeze({ jobs: Object.freeze(jobs) });
+    if (activeCount && heartbeat === undefined) {
+      heartbeat = setInterval(() => {
+        const clock = now();
+        publish(snapshot.jobs.map((job) => TERMINAL_PHASE[job.progress.phase]
+          ? job : Object.freeze({ ...job, clock })));
+      }, 1000);
+      (heartbeat as unknown as { unref?: () => void }).unref?.();
+    } else if (!activeCount && heartbeat !== undefined) {
+      clearInterval(heartbeat);
+      heartbeat = undefined;
+    }
     for (const listener of listeners) listener();
     if (activeCountChanged) {
       for (const listener of activeListeners) listener();
@@ -115,7 +128,10 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
     const changed = transform(current);
     if (changed === current) return;
     const jobs = [...snapshot.jobs];
-    jobs[index] = Object.freeze({ ...changed, updatedAt: now() });
+    const clock = now();
+    jobs[index] = Object.freeze({ ...changed, clock, updatedAt: clock,
+      progress: changed.progress === current.progress ? current.progress
+        : transitionExportProgress(current.progress, changed.progress, clock) });
     publish(jobs);
   };
   const markCancelled = (jobId: string) => {
@@ -223,6 +239,11 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
     getActiveCount: () => activeCount,
     subscribe(listener) {
       listeners.add(listener);
+      if (activeCount) {
+        const clock = now();
+        publish(snapshot.jobs.map((job) => TERMINAL_PHASE[job.progress.phase]
+          ? job : Object.freeze({ ...job, clock })));
+      }
       return () => listeners.delete(listener);
     },
     subscribeActive(listener) {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { renderTimelineInBrowser, type BrowserExportOptions } from './browserExport';
 import { immutableExportSnapshot } from './exportMediaPlan';
 import type { ProjectDoc, TimelineState } from '../editor/types';
+import type { BrowserExportEvent } from './exportLiveProgress';
 
 const globals = globalThis as unknown as Record<string, unknown>;
 const prior = new Map(['window', 'navigator', '__XMT_EDITOR__', '__XMT_EXPORT_ACCELERATION__']
@@ -24,12 +25,22 @@ try {
   for (const userAgent of ['Windows NT 10.0', 'Linux; Android 15', 'iPhone; CPU iPhone OS 18', 'Macintosh']) {
     Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { userAgent } });
     const calls: string[] = [];
+    const events: BrowserExportEvent[] = [];
+    let subscribed = false;
+    let detached = 0;
+    const observeProgress = () => {
+      assert.equal(subscribed, false);
+      subscribed = true;
+      return () => { subscribed = false; detached += 1; };
+    };
     globals.__XMT_EXPORT_ACCELERATION__ = {
+      observeProgress,
       selectEncoder: async () => ({ hardwareAcceleration: 'prefer-hardware' }),
       prepareProject: async ({ project: inputs, sources }: {
         project: { state: TimelineState; project: ProjectDoc }; sources: string[];
       }) => {
         calls.push('prepare');
+        assert.equal(subscribed, true);
         assert.deepEqual(sources.sort(), [clip(1).src, clip(2).src]);
         assert.notEqual(inputs.project, project);
         assert.notEqual(inputs.state, state);
@@ -38,6 +49,7 @@ try {
       },
     };
     const options: BrowserExportOptions = { state, project, timelineId: 'main', codec: 'h264',
+      onStatus: (event) => events.push(event),
       resolution: '1080p', fps: 30, loadComposition: async () => ({ TimelineComposition: () => null }),
       loadRenderer: (async () => ({
         canRenderMediaOnWeb: async () => ({ canRender: true, issues: [] }),
@@ -52,12 +64,18 @@ try {
     };
     assert.equal((await renderTimelineInBrowser(options)).status, 'rendered');
     assert.deepEqual(calls, ['prepare', 'render'], userAgent);
+    assert.equal(detached, 1);
+    assert.equal(subscribed, false);
+    assert.deepEqual(events.filter((event) => event.type === 'stage').map((event) => event.stage),
+      ['encoder-check', 'checking', 'rendering', 'finalizing']);
+    assert.equal(events.find((event) => event.type === 'output')?.output.width, 1920);
     assert.equal(state.items[0]!.src, clip(1).src);
     assert.equal(project.timelines[0]!.items[0]!.src, clip(1).src);
     calls.length = 0;
-    globals.__XMT_EXPORT_ACCELERATION__ = { prepareProject: async () => { throw new Error('not ready'); } };
+    globals.__XMT_EXPORT_ACCELERATION__ = { observeProgress, prepareProject: async () => { throw new Error('not ready'); } };
     await assert.rejects(renderTimelineInBrowser(options), /not ready/);
     assert.deepEqual(calls, [], 'no render after failed preparation');
+    assert.equal(detached, 2, 'failed preparation detaches this job observer');
   }
 } finally {
   for (const [key, descriptor] of prior) {

@@ -17,6 +17,7 @@ import {
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
 import { createExportFailure, createSequenceGraphExportFailure, exportFailureFrom, ExportFailureError } from './exportFailure';
 import { MOBILE_EDITOR_QUERY } from '../editor/useMobileEditorLayout';
+import { applyBrowserExportEvent } from './exportLiveProgress';
 import type {
   BrowserAbortRef,
   ExportEngineInfo,
@@ -67,10 +68,10 @@ function browserProgress(context: VideoExportContext): NonNullable<BrowserExport
     context.setProgress((current) => current ? {
       ...current,
       phase: 'rendering',
-      percent: Math.max(current.percent, percent),
+      percent,
       processedFrames: snapshot.encodedFrames,
       totalFrames: Math.max(1, exportDuration(context.options)),
-      detail: context.t('WebCodecs 浏览器加速'),
+      detail: context.t('浏览器逐帧合成与编码'),
     } : current);
   };
 }
@@ -87,6 +88,12 @@ function browserOptions(context: VideoExportContext, signal: AbortSignal): Brows
     videoBitrate: requestedVideoBitrate,
     signal,
     onProgress: browserProgress(context),
+    onStatus: (event) => context.setProgress((current) => {
+      if (!current) return current;
+      const updated = applyBrowserExportEvent(current, event);
+      return event.type === 'stage' && event.stage === 'rendering'
+        ? { ...updated, totalFrames: Math.max(1, exportDuration(context.options)) } : updated;
+    }),
   };
 }
 
