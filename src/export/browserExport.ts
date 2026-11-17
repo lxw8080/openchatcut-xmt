@@ -44,6 +44,8 @@ export type PlannedVideoCodec = BrowserVideoCodec | 'prores';
 type WebRendererModule = Pick<typeof import('@remotion/web-renderer'), 'canRenderMediaOnWeb' | 'renderMediaOnWeb'>;
 
 export interface BrowserExportOptions {
+  /** Supplied only by the operation that already owns the browser render slot. */
+  session?: ReturnType<typeof startBrowserExportSession>;
   state: TimelineState;
   project?: ProjectDoc;
   timelineId?: string;
@@ -380,8 +382,8 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   throwIfAborted(options.signal);
   const blocker = staticBrowserBlocker(options);
   if (blocker) return blocker;
-  return withBrowserRenderSlot(async () => {
-    const session = startBrowserExportSession({ signal: options.signal, onStatus: options.onStatus,
+  const run = async () => {
+    const session = options.session ?? startBrowserExportSession({ signal: options.signal, onStatus: options.onStatus,
       revision: String(Reflect.get(globalThis, '__XMT_LATEST_PROJECT_REVISION__') ?? Reflect.get(options.project ?? {}, 'revision') ?? 'unknown') });
     const observed = { ...options, signal: session.signal, onStatus: session.event };
     const runtime = (globalThis as { __XMT_EXPORT_ACCELERATION__?: ExportAccelerationRuntime }).__XMT_EXPORT_ACCELERATION__;
@@ -389,14 +391,14 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
     try {
       stop = runtime?.observeProgress?.(session.event);
       const config = await loadBrowserRenderConfig(observed);
-      if ('status' in config) { session.finish('unsupported', config.reason); return config; }
+      if ('status' in config) { if (!options.session) session.finish('unsupported', config.reason); return config; }
       throwIfAborted(session.signal);
       const dimensions = browserScaledExportDimensions(options.state, options.resolution);
       session.event({ type: 'output', output: { container: config.container, codec: options.codec,
         width: dimensions.width, height: dimensions.height, fps: options.fps,
         ...(typeof config.videoBitrate === 'number' ? { bitrate: config.videoBitrate } : {}) } });
       const result = await executeBrowserRender(observed, config, session);
-      session.finish('rendered', undefined, result.blob.size);
+      if (!options.session) session.finish('rendered', undefined, result.blob.size);
       return result;
     } catch (error) {
       let failure = error;
@@ -404,10 +406,12 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
         try { session.checkFailure(error); } catch (classified) { failure = classified; }
       }
       const interrupted = failure instanceof ExportFailureError && failure.failure.code === 'browser_background_interrupted';
-      session.finish(options.signal?.aborted ? 'cancelled' : interrupted ? 'interrupted' : 'failed', failure);
+      if (!options.session) session.finish(options.signal?.aborted ? 'cancelled' : interrupted ? 'interrupted' : 'failed', failure);
       throw failure;
     } finally { stop?.(); }
-  }, options.signal, () => options.onStatus?.({ type: 'stage', stage: 'queued' }));
+  };
+  return options.session ? run() : withBrowserRenderSlot(run, options.signal,
+    () => options.onStatus?.({ type: 'stage', stage: 'queued' }));
 }
 
 /** Keep fallback policy in one testable place: abort never starts a server job. */

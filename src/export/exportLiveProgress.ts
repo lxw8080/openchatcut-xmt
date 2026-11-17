@@ -18,6 +18,8 @@ export interface DecoderRoute {
   probeMs?: number;
   frames?: number;
   optimization?: string;
+  metrics?: { width: number; height: number; fps: number; bitrate: number; codec?: string };
+  capability?: { supported: boolean; smooth: boolean; powerEfficient: boolean };
 }
 export interface LiveExportProgress {
   output?: { container: string; codec: string; width: number; height: number; fps: number; bitrate?: number };

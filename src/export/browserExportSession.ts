@@ -12,6 +12,8 @@ interface RecordData {
   id: string; sequence: number; status: string; startedAt: number; updatedAt: number;
   elapsedMs: number; hiddenMs: number; stage: string; encodedFrames: number;
   routes: DecoderRoute[]; error?: string; outputBytes?: number; attempt: number;
+  source?: string;
+  materials: { source: string; state: string; stage?: string; reasons: string[] }[];
   lifecycle: BrowserLifecycle; stageMs: Record<string, number>;
   events: { stage: string; updatedAt: number; visibility: string }[];
   output?: unknown; encoder?: unknown; build: string; revision: string; environment: object;
@@ -23,7 +25,16 @@ function read(key: string): RecordData | null {
   try { return JSON.parse(sessionStorage.getItem(key) || 'null') as RecordData | null; } catch { return null; }
 }
 function persist(key: string, value: RecordData) {
-  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* Private browsing/storage quota. */ }
+  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {
+    // A full store must not leave a completed export marked running forever.
+    if (value.status !== 'running') {
+      try { sessionStorage.setItem(key, JSON.stringify({ id: value.id, sequence: value.sequence,
+        status: value.status, error: value.error, encodedFrames: value.encodedFrames,
+        startedAt: value.startedAt, updatedAt: value.updatedAt })); } catch {
+        try { sessionStorage.removeItem(key); } catch { /* Private browsing. */ }
+      }
+    }
+  }
 }
 function send(record: RecordData, host: ReturnType<typeof xmtHost>) {
   if (!host) return;
@@ -83,10 +94,12 @@ export function startBrowserExportSession({ signal, onStatus, revision = 'unknow
   const record: RecordData = {
     id, sequence: 0, status: 'running', startedAt: began, updatedAt: began,
     elapsedMs: 0, hiddenMs: 0, stage: 'capability-check', encodedFrames: 0,
-    routes: [], events: [], stageMs: {}, attempt: 1, lifecycle: { visibility: doc?.hidden ? 'hidden' : 'visible', wakeLock: wakeState, hiddenMs },
+    routes: [], materials: [], events: [], stageMs: {}, attempt: 1, lifecycle: { visibility: doc?.hidden ? 'hidden' : 'visible', wakeLock: wakeState, hiddenMs },
     build: import.meta.url.split('/').at(-1) ?? 'unknown', revision,
     environment: { ua: nav?.userAgent, hardwareConcurrency: nav?.hardwareConcurrency,
-      maxTouchPoints: nav?.maxTouchPoints },
+      maxTouchPoints: nav?.maxTouchPoints, secureContext: globalThis.isSecureContext === true,
+      webCodecs: typeof VideoDecoder !== 'undefined' && typeof VideoEncoder !== 'undefined',
+      mediaCapabilities: Boolean(nav?.mediaCapabilities?.decodingInfo), wakeLockAvailable: Boolean(nav?.wakeLock?.request) },
   };
   active.add(id);
   const snapshot = (force = false) => {
@@ -159,16 +172,26 @@ export function startBrowserExportSession({ signal, onStatus, revision = 'unknow
         record.stageMs[record.stage] = (record.stageMs[record.stage] ?? 0) + Math.max(0, clock - stageStart);
         stageStart = clock;
         record.stage = event.stage;
+        record.source = event.source;
         if (event.attempt !== undefined) record.attempt = event.attempt;
         record.events.push({ stage: event.stage, updatedAt: clock, visibility: doc?.hidden ? 'hidden' : 'visible' });
         record.events = record.events.slice(-60);
       } else if (event.type === 'decoders') record.routes = event.routes.slice(0, 200).map((row) => ({ ...row,
         source: row.source.slice(0, 300), originalSource: row.originalSource?.slice(0, 300),
         hardwareFailure: row.hardwareFailure?.slice(0, 250), optimization: row.optimization?.slice(0, 220) }));
+      else if (event.type === 'readiness') {
+        const materials = new Map(record.materials.map((row) => [row.source.split('?')[0], row]));
+        for (const row of [...event.data.assets ?? [], ...event.data.uploads ?? []]) {
+          const source = row.source ?? `/library/api/assets/${row.asset_id}/stream`;
+          materials.set(source.split('?')[0], { source: source.slice(0, 300), state: row.state,
+            stage: row.stage, reasons: (row.reasons ?? []).slice(0, 2).map((reason) => reason.slice(0, 200)) });
+        }
+        record.materials = [...materials.values()].slice(0, 200);
+      }
       else if (event.type === 'output') record.output = event.output;
       else if (event.type === 'encoder') record.encoder = event;
       else if (event.type === 'retry') record.error = event.reason;
-      snapshot(event.type !== 'detail');
+      snapshot();
       onStatus?.(event);
     },
     progress(frames: number) {

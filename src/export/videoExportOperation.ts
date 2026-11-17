@@ -19,6 +19,8 @@ import { createExportFailure, createSequenceGraphExportFailure, exportFailureFro
 import { MOBILE_EDITOR_QUERY } from '../editor/useMobileEditorLayout';
 import { xmtHost } from '../xmt/host';
 import { applyBrowserExportEvent } from './exportLiveProgress';
+import { startBrowserExportSession } from './browserExportSession';
+import { withBrowserRenderSlot } from './browserRenderQueue';
 import type {
   BrowserAbortRef,
   ExportEngineInfo,
@@ -215,10 +217,10 @@ export async function saveBrowserResult(
 
 async function runBrowserRoute(
   context: VideoExportContext,
-  controller: AbortController,
+  options: BrowserExportOptions,
   engine: ExportEngineInfo,
 ): Promise<BrowserExportAttempt> {
-  const attempt = await renderTimelineInBrowser(browserOptions(context, controller.signal));
+  const attempt = await renderTimelineInBrowser(options);
   if (attempt.status === 'rendered') {
     context.setRenderEngine('browser');
     context.setEngineInfo(engine);
@@ -228,19 +230,19 @@ async function runBrowserRoute(
 
 async function runBrowserOnly(
   context: VideoExportContext,
-  controller: AbortController,
+  options: BrowserExportOptions,
   plan: ExportRoutePlan,
-): Promise<void> {
+): Promise<number> {
   if (plan.browser.status === 'unsupported') throw browserExportUnavailable(context, plan.browser.reason);
   const startedAt = performance.now();
   // 渲染期抛出的错误（解码预检、抽帧超时、编码器）原样向上：那才是要给人看的那一句。
-  const attempt = await runBrowserRoute(context, controller, plan.browserEngine);
+  const attempt = await runBrowserRoute(context, options, plan.browserEngine);
   if (attempt.status !== 'rendered') throw browserExportUnavailable(context, attempt.reason);
-  await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, controller.signal);
+  await saveBrowserResult(context, attempt, plan.browserEngine, startedAt, options.signal!);
+  return attempt.blob.size;
 }
 
 async function exportVideo(context: VideoExportContext, ownerSignal?: AbortSignal): Promise<void> {
-  validateVideoExportSequenceGraph(context.options);
   const controller = new AbortController();
   const abortFromOwner = () => controller.abort(ownerSignal?.reason);
   if (ownerSignal?.aborted) abortFromOwner();
@@ -251,10 +253,30 @@ async function exportVideo(context: VideoExportContext, ownerSignal?: AbortSigna
   context.setEngineReason(null);
   try {
     const options = browserOptions(context, controller.signal);
-    const plan = await planVideoExportRoute(options);
-    controller.signal.throwIfAborted();
-    setPlannedRoute(context, plan);
-    await runBrowserOnly(context, controller, plan);
+    // One slot and session cover capability detection, preparation and rendering.
+    // Starting the observation after route planning used to lose 0% failures.
+    await withBrowserRenderSlot(async () => {
+      const session = startBrowserExportSession({ signal: controller.signal, onStatus: options.onStatus,
+        revision: String(Reflect.get(globalThis, '__XMT_LATEST_PROJECT_REVISION__') ?? 'unknown') });
+      const observed = { ...options, signal: session.signal, onStatus: session.event, session };
+      try {
+        validateVideoExportSequenceGraph(context.options);
+        const plan = await planVideoExportRoute(observed);
+        session.signal.throwIfAborted();
+        setPlannedRoute(context, plan);
+        const bytes = await runBrowserOnly(context, observed, plan);
+        session.finish('rendered', undefined, bytes);
+      } catch (error) {
+        let failure = error;
+        if (!controller.signal.aborted) {
+          try { session.checkFailure(error); } catch (classified) { failure = classified; }
+        }
+        const code = exportFailureFrom(failure)?.code;
+        session.finish(controller.signal.aborted ? 'cancelled' : code === 'browser_background_interrupted'
+          ? 'interrupted' : code === 'browser_export_unavailable' ? 'unsupported' : 'failed', failure);
+        throw failure;
+      }
+    }, controller.signal, () => options.onStatus?.({ type: 'stage', stage: 'queued' }));
   } finally {
     ownerSignal?.removeEventListener('abort', abortFromOwner);
     if (context.browserAbortRef.current === controller) context.browserAbortRef.current = null;

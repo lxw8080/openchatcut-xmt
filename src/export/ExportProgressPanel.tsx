@@ -114,6 +114,9 @@ export function ExportProgressPanel({ progress, clock, renderEngine }: {
             {route?.hardwareFailure && <small>{t('软件回退原因')}：{route.hardwareFailure}</small>}
             {route?.optimization && <small>{route.optimization}</small>}
             {route?.probeMs !== undefined && <small>实帧探测：{Math.round(route.probeMs)} ms{route.frames ? ` / ${route.frames} 帧` : ''}（含取帧等待）</small>}
+            {route?.metrics && <small>{route.metrics.width}×{route.metrics.height} · {route.metrics.fps} fps
+              {route.metrics.bitrate > 0 ? ` · ${(route.metrics.bitrate / 1_000_000).toFixed(2)} Mbps` : ''}</small>}
+            {route?.capability && <small>浏览器能力提示：{route.capability.smooth ? '流畅' : '可能吃力'} · {route.capability.powerEfficient ? '低功耗' : '未确认低功耗'}</small>}
             {row.reasons.length > 0 && <small>{row.reasons.join('；')}</small>}
           </li>;
         })}</ul>
