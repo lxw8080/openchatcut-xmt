@@ -81,7 +81,7 @@ function createWorkflowOperations(
     verifyCompletedExport,
     t,
     ...setters,
-  });
+  }, (fallbackSignal) => exportServer('video', fallbackSignal));
   return {
     exportAudio: async (signal) => { await exportServer('audio', signal); return COMMITTED_EXPORT; },
     exportMg: async (signal) => { await artifacts.exportMg(signal); return COMMITTED_EXPORT; },

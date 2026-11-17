@@ -127,16 +127,20 @@ async function submitExport(
   operationId: string,
   signal?: AbortSignal,
 ) {
-  // xmt：宿主没有随附 server 的渲染进程，/export/job 打过去只会拿回宿主的 404。
-  // 成片早已不走这里（videoExportOperation 只走浏览器）；剩下会到这里的是音轨
-  // （MP3）与 ProRes 母带——本站没有这两种产物，直说，别让一条 404 页顶替原因。
-  if (xmtHost()) {
+  const host = xmtHost();
+  if (host && (format !== 'video' || codec !== 'h264')) {
     throw new Error(context.t('本站没有服务端渲染进程，无法提取音轨或渲染 ProRes 母带；成片请用浏览器导出或「使用本机导出」'));
   }
-  const submission = await fetch('/export/job', {
+  if (host) {
+    const flush = (window as unknown as { __XMT_FLUSH_PROJECT__?: () => Promise<number> }).__XMT_FLUSH_PROJECT__;
+    await flush?.();
+  }
+  const body = submissionBody(context, format, codec, operationId);
+  if (host) body.xmtJobId = host.jobId;
+  const submission = await fetch(host ? '/editor/export/job' : '/export/job', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(submissionBody(context, format, codec, operationId)),
+    headers: { 'Content-Type': 'application/json', ...(host ? { 'X-CSRFToken': host.csrfToken } : {}) },
+    body: JSON.stringify(body),
     signal,
   });
   const submitted: unknown = await submission.json().catch(() => null);
@@ -162,7 +166,8 @@ async function readSnapshot(
   t: Translate,
   signal?: AbortSignal,
 ): Promise<ExportJobSnapshot> {
-  const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { signal });
+  const base = xmtHost() ? '/editor/export/job' : '/export/job';
+  const response = await fetch(`${base}/${encodeURIComponent(renderId)}`, { signal });
   const snapshot: unknown = await response.json().catch(() => null);
   const validSnapshot = snapshot !== null && typeof snapshot === 'object'
     && 'status' in snapshot
@@ -230,7 +235,12 @@ export async function pollExport(
 }
 
 async function deleteExportJob(renderId: string): Promise<void> {
-  const response = await fetch(`/export/job/${encodeURIComponent(renderId)}`, { method: 'DELETE' });
+  const host = xmtHost();
+  const base = host ? '/editor/export/job' : '/export/job';
+  const response = await fetch(`${base}/${encodeURIComponent(renderId)}`, {
+    method: 'DELETE',
+    headers: host ? { 'X-CSRFToken': host.csrfToken } : undefined,
+  });
   if (!response.ok && response.status !== 404) {
     throw new Error(`server export cleanup failed (${response.status})`);
   }

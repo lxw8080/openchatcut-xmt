@@ -15,7 +15,8 @@ import {
   type ExportDestination,
 } from './exportDestination';
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
-import { createExportFailure, createSequenceGraphExportFailure, ExportFailureError } from './exportFailure';
+import { createExportFailure, createSequenceGraphExportFailure, exportFailureFrom, ExportFailureError } from './exportFailure';
+import { MOBILE_EDITOR_QUERY } from '../editor/useMobileEditorLayout';
 import type {
   BrowserAbortRef,
   ExportEngineInfo,
@@ -96,11 +97,9 @@ function setPlannedRoute(context: VideoExportContext, plan: ExportRoutePlan): vo
   context.setProgress((current) => current ? { ...current, detail: context.t(plan.reason) } : current);
 }
 
-// xmt：浏览器这条路走不通就是导出失败，原因原样报给人。
-//
-// 上游在这里回退到随附 server 的 `/export/job`；宿主没有那个进程，回退只会拿回
-// 一条 404，而它会顶替掉真正的原因（Windows 上是解码预检 / 抽帧失败）。真正的
-// 出路是宿主外壳的「使用本机导出」，所以文案把它指出来。
+// 浏览器不可用统一落成 preflight 错误。桌面与不符合受限条件的请求保留原错误；
+// 符合移动 H.264、原帧率条件的请求由 createVideoExporter 改走 XMT 服务端。
+// 不沿用上游针对独立 server 的回退，渲染期错误也不换路重跑。
 function browserExportUnavailable(context: VideoExportContext, reason: string): ExportFailureError {
   return new ExportFailureError(createExportFailure({
     stage: 'preflight',
@@ -254,6 +253,20 @@ async function exportVideo(context: VideoExportContext, ownerSignal?: AbortSigna
   }
 }
 
-export function createVideoExporter(context: VideoExportContext) {
-  return (signal?: AbortSignal) => exportVideo(context, signal);
+export function shouldUseMobileServerFallback(error: unknown, mobile: boolean, codec: string, fpsMatches: boolean): boolean {
+  return mobile && codec === 'h264' && fpsMatches && exportFailureFrom(error)?.code === 'browser_export_unavailable';
+}
+
+export function createVideoExporter(context: VideoExportContext, fallback?: (signal?: AbortSignal) => Promise<unknown>) {
+  return async (signal?: AbortSignal) => {
+    try {
+      await exportVideo(context, signal);
+    } catch (error) {
+      const mobile = typeof window !== 'undefined' && window.matchMedia(MOBILE_EDITOR_QUERY).matches;
+      if (!fallback || !shouldUseMobileServerFallback(error, mobile, context.options.codec, context.options.fps === context.options.state.fps)) throw error;
+      context.setEngineReason(context.t('当前浏览器不支持 WebCodecs，已切换服务端渲染'));
+      context.setBusy(context.t('正在提交服务端渲染…'));
+      await fallback(signal);
+    }
+  };
 }

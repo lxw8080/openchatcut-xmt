@@ -1,18 +1,15 @@
 import { inspectBrowserExport, isAbortError, type BrowserExportInspection, type BrowserExportOptions } from './browserExport';
 import type { ExportEngineInfo } from './exportWorkflowTypes';
 
-// xmt：成片导出只有一条路——浏览器 WebCodecs。
+// xmt：默认成片导出路线是浏览器 WebCodecs。
 //
-// 上游在这里还会探测 `/export/capabilities`，并在浏览器预检不过（或历史实测更
-// 快）时改走 `/export/job`——那是随附 server / 桌面壳的渲染进程。本 fork 跑在
-// xmt 的 /editor/<job> 外壳里，没有那个进程：这几条 URL 打到宿主上是 404，而
-// 上游的回退把它当成「兼容渲染」的应答，用户看到的就是一句
-// 「The requested URL was not found on the server」，真正的浏览器错误被吞掉
-// （2026-09-12 Windows 全工程导不出的事故）。xmt 自己的「使用本机导出」由宿主
-// 外壳经 xmt-renderer:// 协议唤起本地渲染器，不经过这个模块。
+// 不沿用上游 `/export/capabilities` 与 `/export/job` 的自动回退：独立 server /
+// 桌面壳在 XMT 宿主里不存在。移动布局下，若 H.264、原时间线帧率的浏览器预检明确
+// 不支持，videoExportOperation 会改走 XMT 自己的 `/editor/export/job` ProjectDoc
+// 服务端；已经开始渲染后的错误仍原样上报，绝不换路重跑。
 //
-// 所以这里只回答一件事：浏览器这条路今天走不走得通、用不用得上硬件编码。走不通
-// 的原因原样带回去，由 videoExportOperation 以 preflight 失败报给人，绝不回退。
+// 所以这里只回答浏览器路线是否可用、是否支持硬件编码；移动预检失败的受限回退
+// 在 videoExportOperation 统一判断。
 
 const PERFORMANCE_STORAGE_KEY = 'cc.exportPerformance.v1';
 const MIN_SAMPLE_MS = 250;
