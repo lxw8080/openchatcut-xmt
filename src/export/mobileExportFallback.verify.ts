@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { createExportFailure } from './exportFailure';
-import { shouldUseMobileServerExport } from './mobileExportRoute';
 import { createVideoExporter, shouldUseMobileServerFallback, type VideoExportContext } from './videoExportOperation';
 
 const unavailable = createExportFailure({
@@ -10,15 +9,18 @@ const renderFailure = createExportFailure({
   stage: 'render', code: 'export_failed', retryable: true, message: 'failed',
 });
 
-for (const [mobile, codec, fps, sourceFps, expected] of [
-  [true, 'h264', 30, 30, true], [false, 'h264', 30, 30, false],
-  [true, 'vp8', 30, 30, false], [true, 'prores', 30, 30, false],
-  [true, 'h264', 60, 30, false],
+for (const [mobile, codec, outputMatches, expected] of [
+  [true, 'h264', true, true], [false, 'h264', true, false],
+  [true, 'vp8', true, false], [true, 'prores', true, false],
+  [true, 'h264', false, false],
 ] as const) {
-  assert.equal(shouldUseMobileServerExport({ mobile, codec, fps, sourceFps }), expected);
+  assert.equal(shouldUseMobileServerFallback(unavailable, mobile, codec, outputMatches), expected);
 }
 assert.equal(shouldUseMobileServerFallback(renderFailure, true, 'h264', true), false);
-assert.equal(shouldUseMobileServerFallback(unavailable, false, 'h264', true), false);
+assert.equal(shouldUseMobileServerFallback(new DOMException('cancel', 'AbortError'), true, 'h264', true), false);
+assert.equal(shouldUseMobileServerFallback(createExportFailure({
+  stage: 'preflight', code: 'browser_capability_timeout', retryable: true, message: 'timeout',
+}), true, 'h264', true), false);
 
 const globals = globalThis as unknown as Record<string, unknown>;
 const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -29,7 +31,8 @@ try {
   };
   const calls: string[] = [];
   const context = {
-    options: { state: { fps: 30 }, codec: 'h264', fps: 30 },
+    options: { state: { fps: 30, width: 1920, height: 1080 }, codec: 'h264', fps: 30, resolution: '1080p' },
+    browserAbortRef: { current: null },
     setRenderEngine: (value: string) => calls.push(`engine:${value}`),
     setEngineInfo: () => undefined,
     setEngineReason: () => undefined,
@@ -37,10 +40,14 @@ try {
     setProgress: () => undefined,
     t: (value: string) => value,
   } as unknown as VideoExportContext;
-  await createVideoExporter(context, async () => { calls.push('server'); })();
-  assert.deepEqual(calls, ['engine:server', '正在提交服务端渲染…', 'server']);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(createVideoExporter(context, async () => { calls.push('server'); })(controller.signal),
+    { name: 'AbortError' });
+  assert.deepEqual(calls, ['engine:checking'], 'mobile must enter browser preflight and honor cancellation before any server submission');
+  assert.equal(context.browserAbortRef.current, null);
 } finally {
   if (previous) Object.defineProperty(globalThis, 'window', previous);
   else delete globals.window;
 }
-console.log('mobileExportFallback.verify: OK (direct mobile server route; desktop and unsupported formats unchanged; no render retry)');
+console.log('mobileExportFallback.verify: OK (browser first; confirmed unsupported only; matching output; abort/timeout/render failures never submit)');

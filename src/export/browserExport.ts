@@ -8,6 +8,7 @@ import { collectExportMediaPlan } from './exportMediaPlan';
 import { createExportFailure, ExportFailureError } from './exportFailure';
 import { withBrowserRenderSlot } from './browserRenderQueue';
 import type { BrowserExportEvent } from './exportLiveProgress';
+import { withExportProbeDeadline } from './browserExportProbe';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 /** xmt 导出加速运行时的最小接口（宿主 editor-export-acceleration.js 提供）。 */
@@ -131,9 +132,13 @@ async function loadBrowserRenderConfig(
   const container = codec === 'h264' ? 'mp4' : 'webm';
   const audioCodec = codec === 'h264' ? 'aac' : 'opus';
   const resolvedVideoBitrate = videoBitrate ?? 'high';
-  const renderer = await (options.loadRenderer ?? (() => import('@remotion/web-renderer')))();
+  options.onStatus?.({ type: 'stage', stage: 'capability-check' });
+  const renderer = await withExportProbeDeadline(
+    options.loadRenderer ?? (() => import('@remotion/web-renderer')),
+    { signal, timeoutMs: 30_000, code: 'browser_renderer_load_timeout', message: '浏览器渲染组件加载超时，请检查网络后重试' },
+  );
   throwIfAborted(signal);
-  const capability = await renderer.canRenderMediaOnWeb({
+  const capability = await withExportProbeDeadline(() => renderer.canRenderMediaOnWeb({
     container,
     videoCodec: codec,
     audioCodec,
@@ -141,7 +146,10 @@ async function loadBrowserRenderConfig(
     height,
     videoBitrate: resolvedVideoBitrate,
     audioBitrate: 'high',
-  });
+    // Capability only: output storage is selected later by the renderer. The
+    // build adapter makes this skip Remotion's unconditional OPFS probe.
+    outputTarget: 'arraybuffer',
+  }), { signal, timeoutMs: 10_000, code: 'browser_capability_timeout', message: '浏览器编码能力检测超时，请重新打开页面后重试；尚未确认此设备不支持导出' });
   const issues = capability.issues.map((issue) => issue.message);
   if (!capability.canRender) {
     return { status: 'unsupported', reason: issues[0] ?? '当前浏览器不支持此编码配置', issues };
@@ -177,7 +185,7 @@ async function isBrowserEncodingPowerEfficient(options: BrowserExportOptions): P
     ? 'video/mp4; codecs="avc1.640028"'
     : 'video/webm; codecs="vp8"';
   try {
-    const info = await capabilities.encodingInfo({
+    const info = await withExportProbeDeadline(() => capabilities.encodingInfo({
       type: 'record',
       video: {
         contentType,
@@ -186,9 +194,11 @@ async function isBrowserEncodingPowerEfficient(options: BrowserExportOptions): P
         bitrate: options.videoBitrate ?? DEFAULT_CAPABILITY_BITRATE_BPS,
         framerate: options.fps,
       },
-    });
+    }), { signal: options.signal, timeoutMs: 1_000, code: 'browser_efficiency_timeout', message: '硬件效率查询超时' });
     return info.powerEfficient;
   } catch {
+    options.signal?.throwIfAborted();
+    // This optional hint never disables the real hardware-first encode probe.
     return undefined;
   }
 }

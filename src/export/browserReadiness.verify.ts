@@ -67,7 +67,7 @@ try {
     assert.equal(detached, 1);
     assert.equal(subscribed, false);
     assert.deepEqual(events.filter((event) => event.type === 'stage').map((event) => event.stage),
-      ['encoder-check', 'checking', 'rendering', 'finalizing']);
+      ['capability-check', 'encoder-check', 'checking', 'rendering', 'finalizing']);
     assert.equal(events.find((event) => event.type === 'output')?.output.width, 1920);
     assert.equal(state.items[0]!.src, clip(1).src);
     assert.equal(project.timelines[0]!.items[0]!.src, clip(1).src);

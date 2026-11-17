@@ -1,6 +1,6 @@
 import type { ExportPhase, ExportProgress } from './exportWorkflowTypes';
 
-export type PreparationStage = 'checking' | 'encoder-check' | 'transcoding' | 'probing' | 'recovering';
+export type PreparationStage = 'capability-check' | 'checking' | 'encoder-check' | 'transcoding' | 'probing' | 'recovering';
 export type MaterialStage = 'checking' | 'queued' | 'transcoding' | 'verifying' | 'ready' | 'failed';
 export interface MaterialReceipt {
   source: string;
@@ -115,7 +115,7 @@ export function renderThroughput(progress: ExportProgress, now: number): { fps: 
 }
 
 export const EXPORT_STAGE_LABELS: Record<string, string> = {
-  queued: '等待网页渲染', checking: '检查素材', 'encoder-check': '检查输出编码',
+  queued: '等待网页渲染', 'capability-check': '检测浏览器导出能力', checking: '检查素材', 'encoder-check': '检查输出编码',
   transcoding: '准备兼容素材', probing: '验证素材解码', recovering: '恢复解码并准备重试',
   preparing: '准备素材', rendering: '正在渲染', finalizing: '正在封装', verifying: '正在质量检查',
   downloading: '正在保存', completed: '导出完成', failed: '导出失败', cancelled: '已取消',

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { xmtDecoderProbe } from './xmtDecoderProbe';
+import { xmtBrowserExportStorage } from './xmtBrowserExportStorage';
 
 const appPackage = JSON.parse(readFileSync('package.json', 'utf8')) as { version?: unknown };
 if (typeof appPackage.version !== 'string') throw new Error('package.json is missing a valid version');
@@ -57,7 +58,7 @@ export default defineConfig(() => {
       __CONFIGURED_CAPS__: JSON.stringify(FORK_CONFIGURED_CAPS),
     },
     publicDir: 'public',
-    plugins: [react(), excludeUserMediaFromBuild(), xmtDecoderProbe()],
+    plugins: [react(), excludeUserMediaFromBuild(), xmtDecoderProbe(), xmtBrowserExportStorage()],
     server: {
       port: 5199,
       strictPort: true,

@@ -1,10 +1,10 @@
-import { inspectBrowserExport, isAbortError, type BrowserExportInspection, type BrowserExportOptions } from './browserExport';
+import { inspectBrowserExport, type BrowserExportInspection, type BrowserExportOptions } from './browserExport';
 import type { ExportEngineInfo } from './exportWorkflowTypes';
 
 // xmt：默认成片导出路线是浏览器 WebCodecs。
 //
 // 不沿用上游 `/export/capabilities` 与 `/export/job` 的自动回退：独立 server /
-// 桌面壳在 XMT 宿主里不存在。移动布局下，若 H.264、原时间线帧率的浏览器预检明确
+// 桌面壳在 XMT 宿主里不存在。移动布局下，若 H.264、原画幅/帧率、自动码率的预检明确
 // 不支持，videoExportOperation 会改走 XMT 自己的 `/editor/export/job` ProjectDoc
 // 服务端；已经开始渲染后的错误仍原样上报，绝不换路重跑。
 //
@@ -35,23 +35,10 @@ export interface ExportRoutePlan {
 function browserEngine(powerEfficient?: boolean): ExportEngineInfo {
   return {
     id: 'webcodecs',
-    label: powerEfficient ? 'WebCodecs · 硬件加速' : 'WebCodecs · 本机编码',
+    label: 'WebCodecs · 本机渲染',
     hardware: powerEfficient === true,
     transport: 'browser',
   };
-}
-
-async function inspectBrowser(options: BrowserExportOptions): Promise<BrowserExportInspection> {
-  try {
-    return await inspectBrowserExport(options);
-  } catch (error) {
-    if (isAbortError(error)) throw error;
-    return {
-      status: 'unsupported',
-      reason: error instanceof Error ? error.message : '浏览器快导失败',
-      issues: [],
-    };
-  }
 }
 
 function loadPerformance(): PerformanceStore {
@@ -73,7 +60,9 @@ function performanceKey(engine: ExportEngineInfo): string {
 }
 
 export async function planVideoExportRoute(options: BrowserExportOptions): Promise<ExportRoutePlan> {
-  const browser = await inspectBrowser(options);
+  // Timeout/network/initialization failures are unknown capability, not proof
+  // of unsupported WebCodecs. Propagate them without starting a server render.
+  const browser = await inspectBrowserExport(options);
   const engine = browserEngine(browser.status === 'supported' ? browser.powerEfficient : undefined);
   const reason = browser.status === 'unsupported'
     ? browser.reason
