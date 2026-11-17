@@ -23,7 +23,7 @@ import type { Plugin } from 'vite';
 //   globalThis.__XMT_EXPORT_OPEN_SOURCE__(src, signal)
 //       prepareProject / recoverDecoder 用它逐素材「真的打开一次」：走与正式
 //       渲染完全相同的 sink 工厂，探针作为副作用在里面跑完，随后 dispose。
-// 三条纪律：只在 Windows + 导出中生效（其余场景传 {}，与上游逐字节相同）；
+// 三条纪律：所有平台只在导出中生效（预览传 {}，与上游逐字节相同）；
 // 音轨探针只 warn 不否决（视频片段在时间线上一律 volume=0，第五类故障）；
 // 探针先问轨道真实起点再取样，不在固定时间点取。
 
@@ -54,7 +54,7 @@ const GET_SINK_HEAD = '    dispose: () => input.dispose()\n  };\n};\n\n';
 
 const OPEN_SOURCE_BLOCK = `// ── xmt：Windows 导出逐素材真实解帧预检（config/xmtDecoderProbe.ts 构建期注入）──
 async function xmtSelectDecoderOptions(src, input, videoTrack) {
-  if (typeof window === "undefined" || !window.__XMT_EXPORTING__ || !/Windows/.test(navigator.userAgent)) return {};
+  if (typeof window === "undefined" || !window.__XMT_EXPORTING__) return {};
   const runtime = window.__XMT_EXPORT_ACCELERATION__;
   if (!runtime?.selectDecoder) return {};
   return runtime.selectDecoder({

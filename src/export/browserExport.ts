@@ -4,6 +4,8 @@ import type { TimelineCompositionProps } from '../editor/TimelineComposition';
 import { timelineDuration, type ProjectDoc, type TimelineState } from '../editor/types';
 import { resolveTimelineRenderPlan } from '../editor/sequenceGraph';
 import { webScaledExportDimensions, type ExportResolution } from './mediaSettings';
+import { collectExportMediaPlan } from './exportMediaPlan';
+import { createExportFailure, ExportFailureError } from './exportFailure';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 /** xmt 导出加速运行时的最小接口（宿主 editor-export-acceleration.js 提供）。 */
@@ -12,9 +14,10 @@ interface ExportAccelerationRuntime {
     Promise<{ hardwareAcceleration: 'prefer-hardware' | 'prefer-software'; reason?: string }>;
   beginAttempt?: (input: { codec: string; width: number; height: number; fps: number; bitrate?: number | 'high'; hardwareAcceleration: string; outputTarget: string }) => unknown;
   noteProgress?: (token: unknown, progress: RenderMediaOnWebProgress) => void;
+  markPrepared?: (token: unknown) => void;
   finishAttempt?: (token: unknown, result: unknown, blob: Blob) => void;
   failAttempt?: (token: unknown, error: unknown) => void;
-  prepareProject?: (input: { project?: ProjectDoc; signal?: AbortSignal; openSource?: unknown }) => Promise<void>;
+  prepareProject?: (input: { project?: unknown; sources: string[]; signal?: AbortSignal; openSource?: unknown }) => Promise<unknown>;
   recoverDecoder?: (input: { error: unknown; signal?: AbortSignal; openSource?: unknown }) => Promise<boolean | undefined>;
   shouldFallbackEncoder?: (error: unknown) => boolean | undefined;
   delayRenderTimeoutMs?: number;
@@ -204,13 +207,23 @@ async function executeBrowserRender(
   options: BrowserExportOptions,
   config: BrowserRenderConfig,
 ): Promise<Extract<BrowserExportAttempt, { status: 'rendered' }>> {
-  const { state, project, timelineId, codec, signal, onProgress } = options;
+  const { timelineId, codec, signal, onProgress } = options;
+  // Only this export owns these writable copies. Runtime proxy/pin changes must
+  // reach both render inputs without ever touching the editor's saved project.
+  const exportInputs = structuredClone({ state: options.state, project: options.project });
+  const { state, project } = exportInputs;
+  const mediaPlan = collectExportMediaPlan(project
+    ? { ...project, activeTimelineId: timelineId ?? project.activeTimelineId } : state);
+  const sources = [...new Set(mediaPlan.references.map((reference) => reference.source))];
   // Invariant: loadBrowserRenderConfig rejected prores before any render config existed.
   if (codec === 'prores') throw new Error('prores must be rejected by loadBrowserRenderConfig');
   const props: TimelineCompositionProps = { state, project, timelineId, transparent: false, browserRenderer: true };
   // xmt 导出加速运行时（宿主页在 Vite 入口之前加载 editor-export-acceleration.js）。
   // 运行时不在时一切钩子短路，路径逐字等于无加速的浏览器导出。
   const runtime = (globalThis as { __XMT_EXPORT_ACCELERATION__?: ExportAccelerationRuntime }).__XMT_EXPORT_ACCELERATION__;
+  if ((globalThis as { __XMT_EDITOR__?: unknown }).__XMT_EDITOR__ && !runtime?.prepareProject) {
+    throw new Error('素材检查组件未加载，请刷新页面后重试');
+  }
   const width = Math.max(1, Math.round(state.width * config.scale));
   const height = Math.max(1, Math.round(state.height * config.scale));
   const preflight = await (runtime?.selectEncoder?.({
@@ -229,13 +242,19 @@ async function executeBrowserRender(
     try {
       const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();
       throwIfAborted(signal);
-      // Windows 上常见的失败是静默挂起而不是报错：渲染前先逐素材真实解帧规划
-      // （每个源只规划一次，软/硬重试共用）。
-      if (/Windows/.test(navigator.userAgent) && !projectPrepared) {
-        await runtime?.prepareProject?.({ project, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
+      // Every browser waits for server readiness and real decoding before render.
+      if (!projectPrepared) {
+        try {
+          await runtime?.prepareProject?.({ project: exportInputs, sources, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
+        } catch (error) {
+          throwIfAborted(signal);
+          throw new ExportFailureError(createExportFailure({ stage: 'preflight', code: 'export_media_not_ready',
+            retryable: true, message: error instanceof Error ? error.message : String(error) }));
+        }
         projectPrepared = true;
       }
       throwIfAborted(signal);
+      runtime?.markPrepared?.(attemptToken);
       const result = await config.renderer.renderMediaOnWeb({
         composition: {
           id: 'openchatcut-timeline-browser',
@@ -288,8 +307,19 @@ async function executeBrowserRender(
     return attempt;
   } catch (error) {
     throwIfAborted(signal);
+    if (!projectPrepared) throw error;
     // 输入解码运行期失败：运行时先尝试恢复（例如清解码缓存/换源），成功则同路径整片重试。
-    if (await runtime?.recoverDecoder?.({ error, signal, openSource: (window as ExportFlagWindow).__XMT_EXPORT_OPEN_SOURCE__ })) {
+    const w = window as ExportFlagWindow;
+    let recovered = false;
+    w.__XMT_EXPORTING__ = true;
+    w.__XMT_EXPORT_SIGNAL__ = signal;
+    try {
+      recovered = Boolean(await runtime?.recoverDecoder?.({ error, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ }));
+    } finally {
+      delete w.__XMT_EXPORTING__;
+      delete w.__XMT_EXPORT_SIGNAL__;
+    }
+    if (recovered) {
       console.warn('[export] 输入解码运行期恢复成功，整片重试一次：', error);
       const attempt = await attemptRender(preflight.hardwareAcceleration);
       logPath('输入解码恢复后重试');
