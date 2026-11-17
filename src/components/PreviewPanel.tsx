@@ -33,10 +33,11 @@ import {
 } from '../media/qualityPolicy';
 import type { SlipPreview } from '../editor/slip';
 import { SlipTwoUpPreview } from './SlipTwoUpPreview';
-import { PREVIEW_SHARED_AUDIO_TAGS } from './previewAudioPool';
 import { SafeZoneOverlay } from './SafeZoneOverlay';
 import { PreviewTransformOverlay } from './preview/PreviewTransformOverlay';
 import { fitPreviewCanvasSize, type PreviewCanvasSize } from './preview/previewCanvasGeometry';
+import { useMobileEditorLayout } from '../editor/useMobileEditorLayout';
+import { usePreviewAudioPool } from './preview/usePreviewAudioPool';
 
 const MEDIA_LOADING_NOTICE_DELAY_MS = 160;
 
@@ -115,6 +116,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   hoverPreviewFrame = null,
 }: PreviewPanelProps) {
   const t = useT();
+  const mobile = useMobileEditorLayout();
   const renderProject = useMemo<ProjectDoc>(() => ({
     ...project,
     timelines: project.timelines.map((timeline) => timeline.id === timelineId
@@ -123,18 +125,21 @@ export const PreviewPanel = memo(function PreviewPanel({
   }), [project, state, timelineId]);
   const preview = usePreviewProjectDoc(renderProject, timelineId);
   const duration = preview.plan.durationInFrames;
+  const previewAudioPool = usePreviewAudioPool({ state, mobile, playerRef, durationInFrames: duration });
   const playerInputProps = useMemo(() => ({
     state: preview.state,
     project: preview.project,
     timelineId,
     selectedItemId: selectedItem?.id,
     onSelectedPreviewStatus,
-  }), [preview.state, preview.project, timelineId, selectedItem?.id, onSelectedPreviewStatus]);
+    mobilePreview: mobile,
+  }), [preview.state, preview.project, timelineId, selectedItem?.id, onSelectedPreviewStatus, mobile]);
   const thumbnailInputProps = useMemo(() => ({
     state: preview.state,
     project: preview.project,
     timelineId,
-  }), [preview.state, preview.project, timelineId]);
+    mobilePreview: mobile,
+  }), [preview.state, preview.project, timelineId, mobile]);
   const inputRef = useRef<HTMLInputElement>(null);
   const videoBoxRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -352,14 +357,16 @@ export const PreviewPanel = memo(function PreviewPanel({
             if (source) preview.requestFallback(source.src);
           }}>
             <Player
+              key={previewAudioPool.playerKey}
               ref={playerRef}
               component={TimelineComposition}
               inputProps={playerInputProps}
               durationInFrames={duration}
+              initialFrame={previewAudioPool.initialFrame}
               fps={state.fps}
               compositionWidth={state.width}
               compositionHeight={state.height}
-              numberOfSharedAudioTags={PREVIEW_SHARED_AUDIO_TAGS}
+              numberOfSharedAudioTags={previewAudioPool.audioTags}
               // Full screen black: WebKit legacy full screen div does not automatically blacken the background, and the page checkerboard will be revealed on both sides.
               style={{ width: '100%', height: '100%', backgroundColor: fullscreen ? '#000' : undefined }}
               controls={fullscreen}

@@ -23,6 +23,7 @@ import type {
   UseExportWorkflowOptions,
 } from './exportWorkflowTypes';
 import { xmtHost } from '../xmt/host';
+import { reportExportDiagnostic } from './exportDiagnostics';
 
 export interface ServerExportContext {
   autoQaEnabled: boolean;
@@ -133,10 +134,13 @@ async function submitExport(
   }
   if (host) {
     const flush = (window as unknown as { __XMT_FLUSH_PROJECT__?: () => Promise<number> }).__XMT_FLUSH_PROJECT__;
+    void reportExportDiagnostic('flush-started');
     await flush?.();
+    void reportExportDiagnostic('flush-finished');
   }
   const body = submissionBody(context, format, codec, operationId);
   if (host) body.xmtJobId = host.jobId;
+  void reportExportDiagnostic('submit-started');
   const submission = await fetch(host ? '/editor/export/job' : '/export/job', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(host ? { 'X-CSRFToken': host.csrfToken } : {}) },
@@ -259,17 +263,25 @@ export async function renderCompleted(
   signal?: AbortSignal,
 ): Promise<{ renderId: string; completed: ExportJobResult }> {
   const renderId = context.createOperationId?.() ?? globalThis.crypto.randomUUID();
+  const startedAt = performance.now();
   let submissionAccepted = false;
   let outputObserved = false;
   try {
+    void reportExportDiagnostic('mobile-route');
     await persistServerExportJob(recoveryRecord(context, renderId, format, codec));
     await submitExport(context, format, codec, renderId, signal);
     submissionAccepted = true;
+    void reportExportDiagnostic('submit-accepted', { elapsedMs: performance.now() - startedAt });
     const completed = await pollExport(context, renderId, signal);
     outputObserved = true;
     await markServerExportOutputReady(renderId);
+    void reportExportDiagnostic('render-finished', { elapsedMs: performance.now() - startedAt });
     return { renderId, completed };
   } catch (error) {
+    const code = exportFailureFrom(error)?.code ?? (error instanceof Error ? error.name : 'Error');
+    void reportExportDiagnostic(submissionAccepted ? 'poll-failed' : 'submit-failed', {
+      elapsedMs: performance.now() - startedAt, code,
+    });
     if (submissionAccepted && !outputObserved) {
       await retireAndDeleteExportJob(renderId).catch(() => false);
     }

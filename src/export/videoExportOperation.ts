@@ -17,6 +17,8 @@ import {
 import { planVideoExportRoute, recordExportPerformance, type ExportRoutePlan } from './exportRoutePlanner';
 import { createExportFailure, createSequenceGraphExportFailure, exportFailureFrom, ExportFailureError } from './exportFailure';
 import { MOBILE_EDITOR_QUERY } from '../editor/useMobileEditorLayout';
+import { xmtHost } from '../xmt/host';
+import { MOBILE_SERVER_ENGINE, shouldUseMobileServerExport } from './mobileExportRoute';
 import { applyBrowserExportEvent } from './exportLiveProgress';
 import type {
   BrowserAbortRef,
@@ -266,10 +268,26 @@ export function shouldUseMobileServerFallback(error: unknown, mobile: boolean, c
 
 export function createVideoExporter(context: VideoExportContext, fallback?: (signal?: AbortSignal) => Promise<unknown>) {
   return async (signal?: AbortSignal) => {
+    const mobile = typeof window !== 'undefined' && !!xmtHost() && window.matchMedia(MOBILE_EDITOR_QUERY).matches;
+    if (fallback && shouldUseMobileServerExport({
+      mobile, codec: context.options.codec, fps: context.options.fps, sourceFps: context.options.state.fps,
+    })) {
+      validateVideoExportSequenceGraph(context.options);
+      context.setRenderEngine('server');
+      context.setEngineInfo(MOBILE_SERVER_ENGINE);
+      context.setEngineReason(context.t('手机端使用服务端渲染，按工程原始画幅与帧率导出'));
+      context.setBusy(context.t('正在提交服务端渲染…'));
+      context.setProgress((current) => current ? {
+        ...current, phase: 'preparing', percent: 0, live: undefined,
+        processedFrames: undefined, totalFrames: undefined,
+        detail: context.t('无需等待手机浏览器编码能力检测'),
+      } : current);
+      await fallback(signal);
+      return;
+    }
     try {
       await exportVideo(context, signal);
     } catch (error) {
-      const mobile = typeof window !== 'undefined' && window.matchMedia(MOBILE_EDITOR_QUERY).matches;
       if (!fallback || !shouldUseMobileServerFallback(error, mobile, context.options.codec, context.options.fps === context.options.state.fps)) throw error;
       context.setEngineReason(context.t('当前浏览器不支持 WebCodecs，已切换服务端渲染'));
       context.setBusy(context.t('正在提交服务端渲染…'));

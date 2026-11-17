@@ -2,10 +2,17 @@ import { useSyncExternalStore } from 'react';
 
 export const MOBILE_EDITOR_QUERY = '(max-width: 700px), (max-height: 500px) and (pointer: coarse)';
 
-function subscribe(callback: () => void): () => void {
-  const query = window.matchMedia(MOBILE_EDITOR_QUERY);
-  query.addEventListener('change', callback);
-  return () => query.removeEventListener('change', callback);
+export function subscribeMobileEditorLayout(callback: () => void): () => void {
+  const query = window.matchMedia(MOBILE_EDITOR_QUERY) as MediaQueryList & {
+    addListener?: (listener: () => void) => void;
+    removeListener?: (listener: () => void) => void;
+  };
+  if (typeof query.addEventListener === 'function') {
+    query.addEventListener('change', callback);
+    return () => query.removeEventListener('change', callback);
+  }
+  query.addListener?.(callback);
+  return () => query.removeListener?.(callback);
 }
 
 function getSnapshot(): boolean {
@@ -13,5 +20,5 @@ function getSnapshot(): boolean {
 }
 
 export function useMobileEditorLayout(): boolean {
-  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+  return useSyncExternalStore(subscribeMobileEditorLayout, getSnapshot, () => false);
 }

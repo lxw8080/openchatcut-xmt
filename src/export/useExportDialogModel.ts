@@ -33,6 +33,7 @@ import {
   type QualityMode,
 } from '../media/qualityPolicy';
 import type { ExportDestination } from './exportDestination';
+import { useMobileEditorLayout } from '../editor/useMobileEditorLayout';
 import type { ExportEngineInfo, ExportEngineReason } from './exportWorkflowTypes';
 import {
   effectiveIncludeMg,
@@ -200,6 +201,7 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
   const t = useT();
   const [tab, setTab] = useState<ExportTab>('video');
   const qualityMode = useSyncExternalStore(subscribeQualityMode, getQualityMode, getQualityMode);
+  const mobile = useMobileEditorLayout();
   const video = useVideoSettings(state, qualityMode);
   const subtitles = useSubtitleSettings(state);
   const [nleFormat, setNleFormat] = useState<'fcp_xml' | 'fcp_xml_resolve'>('fcp_xml');
@@ -207,21 +209,24 @@ export function useExportDialogModel({ state, project, projectId, projectName, e
   const mgItems = useMemo(() => state.items.filter((item) => item.kind === 'motion-graphic'), [state.items]);
   const includeAvailableMg = effectiveIncludeMg(includeMg, mgItems);
   const base = sanitizeFileName(projectName, 'export');
+  const exportVideo = mobile ? { ...video, codec: 'h264' as const } : video;
   const workflow = useExportWorkflow({
-    state, project, timelineId: project.activeTimelineId, projectId, projectName, base, tab, codec: video.codec, resolution: video.resolution,
-    fps: video.fps, requestedVideoBitrate: video.requestedBitrate,
+    state, project, timelineId: project.activeTimelineId, projectId, projectName, base, tab, codec: exportVideo.codec, resolution: video.resolution,
+    fps: mobile ? state.fps : video.fps, requestedVideoBitrate: mobile ? undefined : video.requestedBitrate,
     subtitleFormat: subtitles.format, subtitleCaptions: subtitles.captions,
     nleFormat, includeMg: includeAvailableMg, mgItems, onClose,
   }, exportJobs);
-  const name = outputName(base, tab, video, subtitles, nleFormat, t('{n} 个透明 MOV 文件', { n: mgItems.length }));
-  const qualityTag = qualityMode === 'master' ? ` · ${t('画质优先')}` : '';
+  const name = outputName(base, tab, exportVideo, subtitles, nleFormat, t('{n} 个透明 MOV 文件', { n: mgItems.length }));
+  const qualityTag = qualityMode === 'master' && !mobile ? ` · ${t('画质优先')}` : '';
   const codecLabel = video.codec === 'prores'
     ? 'MOV · ProRes 422 HQ'
     : video.codec === 'h264' ? 'MP4 · H.264' : 'WebM · VP8';
   const rateLabel = video.codec === 'prores'
     ? t('母带')
     : `${(video.resolvedBitrate / 1_000_000).toFixed(1)} Mbps`;
-  const videoSummary = `${codecLabel} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${rateLabel}${qualityTag}`;
+  const videoSummary = mobile
+    ? `MP4 · H.264 · ${state.width}×${state.height} · ${state.fps} fps · ${t('服务端默认画质')}`
+    : `${codecLabel} · ${video.dimensions.width}×${video.dimensions.height} · ${video.fps} fps · ${rateLabel}${qualityTag}`;
   const disabled = !!workflow.busy
     || (tab === 'subtitles' && !subtitles.captions)
     || (tab === 'mg' && mgItems.length === 0);

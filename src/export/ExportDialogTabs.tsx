@@ -6,6 +6,7 @@ import {
   MIN_VIDEO_BITRATE_MBPS,
 } from './bitrate';
 import { ExportBitrateControl } from './ExportBitrateControl';
+import { useMobileEditorLayout } from '../editor/useMobileEditorLayout';
 import { ExportQaCard, InfoCard, Row, Segmented } from './ExportDialogParts';
 import {
   EXPORT_FPS,
@@ -23,14 +24,27 @@ const clampBitrate = (value: number): number => Math.max(
 );
 
 interface VideoSettingsProps {
+  state: TimelineState;
   video: ExportVideoSettings;
   busy: boolean;
   qualityMode: 'balanced' | 'master';
   setQualityMode: (mode: 'balanced' | 'master') => void;
 }
 
-function VideoSettings({ video, busy, qualityMode, setQualityMode }: VideoSettingsProps) {
+function VideoSettings({ state, video, busy, qualityMode, setQualityMode }: VideoSettingsProps) {
   const t = useT();
+  const mobile = useMobileEditorLayout();
+  if (mobile) return (
+    <>
+      <InfoCard icon="film" title={t('手机服务端渲染')}
+        text={t('无需等待手机浏览器编码能力检测。关闭弹窗或刷新页面后，可重新打开导出查看任务。')} />
+      <p className="cc-export-footnote">
+        {t('实际输出：MP4 / H.264 · {width}×{height} · {fps} fps（工程原始画幅与帧率）', {
+          width: state.width, height: state.height, fps: state.fps,
+        })}
+      </p>
+    </>
+  );
   return (
     <>
       <Row label={t('画质策略')}>
@@ -112,10 +126,10 @@ function QaSettings({ enabled, busy, qa, onToggle }: QaSettingsProps) {
 
 interface VideoTabProps extends VideoSettingsProps, QaSettingsProps {}
 
-function VideoTab({ video, busy, qualityMode, setQualityMode, enabled, qa, onToggle }: VideoTabProps) {
+function VideoTab({ state, video, busy, qualityMode, setQualityMode, enabled, qa, onToggle }: VideoTabProps) {
   return (
     <>
-      <VideoSettings video={video} busy={busy} qualityMode={qualityMode} setQualityMode={setQualityMode} />
+      <VideoSettings state={state} video={video} busy={busy} qualityMode={qualityMode} setQualityMode={setQualityMode} />
       <QaSettings enabled={enabled} busy={busy} qa={qa} onToggle={onToggle} />
     </>
   );

@@ -28,7 +28,7 @@ import { ItemLayer, SolidLayer, TextLayer, WatermarkLayer } from './TimelineGrap
 
 const GRID = 'repeating-conic-gradient(#242424 0% 25%, #1c1c1c 0% 50%) 50% / 40px 40px';
 
-function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, frameOffset, browserRenderer, sequenceLimits, muted, measure = false }: {
+function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, frameOffset, browserRenderer, sequenceLimits, muted, mobilePreview = false, measure = false }: {
   item: TimelineItem;
   project?: ProjectDoc;
   parentWidth: number;
@@ -38,6 +38,7 @@ function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, fr
   browserRenderer: boolean;
   sequenceLimits?: SequenceGraphLimits;
   muted: boolean;
+  mobilePreview?: boolean;
   measure?: boolean;
 }) {
   const parentFrame = useCurrentFrame();
@@ -89,6 +90,7 @@ function NestedSequenceLayer({ item, project, parentWidth, parentHeight, fit, fr
             browserRenderer={browserRenderer}
             sequenceLimits={sequenceLimits}
             forceMuted={muted}
+            mobilePreview={mobilePreview}
           />
         </Sequence>
       </div>
@@ -110,6 +112,8 @@ export type TimelineCompositionProps = Record<string, unknown> & {
   transparent?: boolean;
   /** Use @remotion/media so @remotion/web-renderer can decode media via WebCodecs. */
   browserRenderer?: boolean;
+  /** Keep every mobile preview media element within the active frame, not its two-second pre-roll. */
+  mobilePreview?: boolean;
   /** The selected clip is the Player's explicit full-fidelity GL preview target. */
   selectedItemId?: string | null;
   onSelectedPreviewStatus?: SelectedPreviewStatusListener;
@@ -134,7 +138,7 @@ function SelectedPreviewStatusReporter({ status, listener }: {
   return null;
 }
 
-function TimelineContent({ state, project, transparent, browserRenderer = false, selectedItemId, onSelectedPreviewStatus, sequenceLimits, forceMuted = false }: TimelineCompositionProps) {
+function TimelineContent({ state, project, transparent, browserRenderer = false, selectedItemId, onSelectedPreviewStatus, sequenceLimits, forceMuted = false, mobilePreview = false }: TimelineCompositionProps) {
   const [readyGlWindows, setReadyGlWindows] = useState<Set<string>>(() => new Set());
   const setGlWindowReady = useCallback((key: string, ready: boolean) => {
     setReadyGlWindows((current) => updateReadyGlWindows(current, key, ready));
@@ -170,7 +174,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
   // Eliminate the "last frame stuck" caused by cold start of three media elements at the starting point of the cut point/transition window in the same frame.
   // Headless export renders deterministically frame by frame, preheating will only slow down the export, set to 0.
   const environment = getRemotionEnvironment();
-  const premountFrames = environment.isRendering ? 0 : Math.round(state.fps * 2);
+  const premountFrames = environment.isRendering || mobilePreview ? 0 : Math.round(state.fps * 2);
   const videoAudioGroups = continuousVideoAudioGroups(ordered, state.transitions);
   const groupedVideoIds = new Set(videoAudioGroups.flatMap((group) => group.map((item) => item.id)));
 
@@ -348,7 +352,7 @@ function TimelineContent({ state, project, transparent, browserRenderer = false,
           <ClipWrapper item={item} frameOffset={-eb} hiddenByCaptions={hiddenByCaptions}>
             {(borderRadius) => item.kind === 'sequence'
               ? <VisualClipSurface item={item} fit={fit} canvasW={state.width} canvasH={state.height} borderRadius={borderRadius}>
-                  <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} measure={environment.isPlayer && item.id === selectedItemId && !!mgLayoutEnabled(item)} />
+                  <NestedSequenceLayer item={item} project={project} parentWidth={state.width} parentHeight={state.height} fit={fit} frameOffset={-eb} browserRenderer={browserRenderer} sequenceLimits={sequenceLimits} muted={isMuted(item.track)} mobilePreview={mobilePreview} measure={environment.isPlayer && item.id === selectedItemId && !!mgLayoutEnabled(item)} />
                 </VisualClipSurface>
               : item.kind === 'motion-graphic'
               ? <ItemLayer item={item} canvasW={state.width} canvasH={state.height} fit={fit} borderRadius={borderRadius} measure={environment.isPlayer && item.id === selectedItemId} />
