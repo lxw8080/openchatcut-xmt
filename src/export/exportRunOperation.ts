@@ -92,7 +92,7 @@ async function runExport(context: ExportRunContext): Promise<void> {
     if (!result?.targetCommitted) context.signal.throwIfAborted();
     const finishedAt = Date.now();
     context.setClock(finishedAt);
-    context.setProgress((current) => current ? { ...current, phase: 'completed', percent: 100, finishedAt } : current);
+    context.setProgress((current) => current ? { ...current, phase: 'completed', percent: 100, finishedAt, detail: undefined } : current);
   } catch (reason) {
     if (isAbortError(reason)) {
       markCancelled(context, reason);

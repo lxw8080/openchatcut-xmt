@@ -304,6 +304,7 @@ async function runRecoveredServerExport(
       phase: 'completed',
       percent: 100,
       finishedAt,
+      detail: undefined,
     } : current);
   } catch (reason) {
     if (isAbortError(reason) && signal.aborted && xmtHost()
