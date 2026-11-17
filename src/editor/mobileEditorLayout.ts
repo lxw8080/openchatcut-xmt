@@ -1,22 +1,54 @@
-import { defaultTrackId, timelineDuration, type TimelineItem, type TimelineState, type TrackKind } from './types';
+import { defaultTrackId, timelineDuration, type TimelineItem, type TimelineState, type TrackId, type TrackKind } from './types';
 
 export const MOBILE_TIMELINE_PX_PER_FRAME = 1.2;
-export const MOBILE_TIMELINE_GUTTER = 12;
+export const MOBILE_TIMELINE_MIN_PX = 0.02;
+export const MOBILE_TIMELINE_MAX_PX = 6;
+export const MOBILE_TIMELINE_GUTTER = 76;
+export const MOBILE_TIMELINE_END_PADDING = 16;
 
 export function mobileTimelineDuration(state: TimelineState): number {
   return timelineDuration(state);
 }
 
-export function primaryMobileTrackItems(state: TimelineState, kind: TrackKind): TimelineItem[] {
-  const track = defaultTrackId(state, kind);
-  if (!track) return [];
+export function mobileTrackItems(state: TimelineState, track: TrackId): TimelineItem[] {
   return state.items
     .filter((item) => item.track === track)
     .sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
 }
 
+export function primaryMobileTrackItems(state: TimelineState, kind: TrackKind): TimelineItem[] {
+  const track = defaultTrackId(state, kind);
+  return track ? mobileTrackItems(state, track) : [];
+}
+
+export function clampMobileTimelinePx(px: number): number {
+  return Math.min(MOBILE_TIMELINE_MAX_PX, Math.max(MOBILE_TIMELINE_MIN_PX, px));
+}
+
+export function fitMobileTimelinePx(totalFrames: number, viewportWidth: number): number {
+  const available = Math.max(80, viewportWidth - MOBILE_TIMELINE_GUTTER - MOBILE_TIMELINE_END_PADDING);
+  return clampMobileTimelinePx(available / Math.max(1, totalFrames));
+}
+
+export function mobileTimelineTickFrames(fps: number, px: number): number {
+  const seconds = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600]
+    .find((candidate) => candidate * fps * px >= 60) ?? 3600;
+  return Math.max(1, Math.round(seconds * Math.max(1, fps)));
+}
+
+export function mobileClipGestureGeometry(item: TimelineItem, mode: 'move' | 'trim-left' | 'trim-right', deltaF: number) {
+  if (mode === 'move') {
+    return { startFrame: Math.max(0, item.startFrame + Math.round(deltaF)), durationInFrames: item.durationInFrames };
+  }
+  if (mode === 'trim-left') {
+    const delta = Math.min(item.durationInFrames - 1, Math.max(-item.startFrame, Math.round(deltaF)));
+    return { startFrame: item.startFrame + delta, durationInFrames: item.durationInFrames - delta };
+  }
+  return { startFrame: item.startFrame, durationInFrames: Math.max(1, item.durationInFrames + Math.round(deltaF)) };
+}
+
 export function mobileTimelineWidth(totalFrames: number, px = MOBILE_TIMELINE_PX_PER_FRAME): number {
-  return Math.max(320, Math.ceil(Math.max(0, totalFrames) * px + MOBILE_TIMELINE_GUTTER * 2));
+  return Math.max(320, Math.ceil(Math.max(0, totalFrames) * px + MOBILE_TIMELINE_GUTTER + MOBILE_TIMELINE_END_PADDING));
 }
 
 export function mobileFrameFromClientX(input: {

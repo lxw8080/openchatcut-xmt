@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../components/icons';
 import { TimelineTabs } from '../components/timeline/TimelineTabs';
 import { ASPECT_PRESETS } from '../editor/types';
@@ -87,6 +87,39 @@ export function MobileSpeedPanel({ item, commands }: { item: TimelineItem; comma
         <input type="range" min="0.25" max="4" step="0.05" value={rate} onChange={(event) => commands.setItemSpeed(item.id, Number(event.target.value))} />
       </label>
     </div>
+  );
+}
+
+export function MobileTimingPanel({ item, fps, commands, onClose }: {
+  item: TimelineItem;
+  fps: number;
+  commands: EditorCommands;
+  onClose: () => void;
+}) {
+  const t = useT();
+  const [start, setStart] = useState((item.startFrame / fps).toFixed(2));
+  const [duration, setDuration] = useState((item.durationInFrames / fps).toFixed(2));
+  const end = (Number(start) || 0) + (Number(duration) || 0);
+  return (
+    <form className="cc-mobile-timing-panel" onSubmit={(event) => {
+      event.preventDefault();
+      const startFrame = Math.max(0, Math.round(Number(start) * fps));
+      const durationInFrames = Math.max(1, Math.round(Number(duration) * fps));
+      commands.batch([
+        { type: 'move', id: item.id, startFrame },
+        { type: 'retime', id: item.id, durationInFrames },
+      ], t('调整片段时间'));
+      onClose();
+    }}>
+      <label>{t('开始时间（秒）')}
+        <input type="number" min="0" step="any" required value={start} onChange={(event) => setStart(event.target.value)} />
+      </label>
+      <label>{t('持续时间（秒）')}
+        <input type="number" min={1 / fps} step="any" required value={duration} onChange={(event) => setDuration(event.target.value)} />
+      </label>
+      <div className="cc-mobile-panel-label">{t('结束时间')}<span>{end.toFixed(2)}s</span></div>
+      <button type="submit" className="cc-mobile-timing-apply">{t('应用')}</button>
+    </form>
   );
 }
 
