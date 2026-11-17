@@ -10,6 +10,7 @@ import { withBrowserRenderSlot } from './browserRenderQueue';
 import type { BrowserExportEvent } from './exportLiveProgress';
 import { withExportProbeDeadline } from './browserExportProbe';
 import { browserDecoderBankBudget } from './browserDecoderBudget';
+import { startBrowserExportSession } from './browserExportSession';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 /** xmt 导出加速运行时的最小接口（宿主 editor-export-acceleration.js 提供）。 */
@@ -22,7 +23,7 @@ interface ExportAccelerationRuntime {
   markPrepared?: (token: unknown) => void;
   finishAttempt?: (token: unknown, result: unknown, blob: Blob) => void;
   failAttempt?: (token: unknown, error: unknown) => void;
-  prepareProject?: (input: { project?: unknown; sources: string[]; signal?: AbortSignal; openSource?: unknown }) => Promise<unknown>;
+  prepareProject?: (input: { project?: unknown; sources: string[]; signal?: AbortSignal; openSource?: unknown; output?: { width: number; height: number; fps: number } }) => Promise<unknown>;
   recoverDecoder?: (input: { error: unknown; signal?: AbortSignal; openSource?: unknown }) => Promise<boolean | undefined>;
   shouldFallbackEncoder?: (error: unknown) => boolean | undefined;
   delayRenderTimeoutMs?: number;
@@ -120,7 +121,7 @@ interface BrowserRenderConfig {
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw abortError();
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : abortError();
 }
 
 async function loadBrowserRenderConfig(
@@ -222,6 +223,7 @@ export async function inspectBrowserExport(options: BrowserExportOptions): Promi
 async function executeBrowserRender(
   options: BrowserExportOptions,
   config: BrowserRenderConfig,
+  session: ReturnType<typeof startBrowserExportSession>,
 ): Promise<Extract<BrowserExportAttempt, { status: 'rendered' }>> {
   const { timelineId, codec, signal, onProgress } = options;
   // Only this export owns these writable copies. Runtime proxy/pin changes must
@@ -274,7 +276,7 @@ async function executeBrowserRender(
       // Every browser waits for server readiness and real decoding before render.
       if (!projectPrepared) {
         options.onStatus?.({ type: 'stage', stage: 'checking' });
-        await runtime?.prepareProject?.({ project: exportInputs, sources, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
+        await runtime?.prepareProject?.({ project: exportInputs, sources, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__, output: { width, height, fps: state.fps } });
         projectPrepared = true;
       }
       throwIfAborted(signal);
@@ -297,6 +299,7 @@ async function executeBrowserRender(
         scale: config.scale,
         signal,
         onProgress: (progress) => {
+          session.progress(progress.encodedFrames);
           onProgress?.(progress);
           runtime?.noteProgress?.(attemptToken, progress);
         },
@@ -317,6 +320,7 @@ async function executeBrowserRender(
       return { status: 'rendered' as const, blob, issues: config.issues };
     } catch (error) {
       runtime?.failAttempt?.(attemptToken, error);
+      session.checkFailure(error);
       // Preserve the original error for the host's decode-dead-end telemetry
       // before presenting a preparation failure to the export UI.
       if (!projectPrepared && !signal?.aborted && !isAbortError(error)) {
@@ -340,6 +344,7 @@ async function executeBrowserRender(
     return attempt;
   } catch (error) {
     throwIfAborted(signal);
+    session.checkFailure(error);
     if (!projectPrepared) throw error;
     // 输入解码运行期失败：运行时先尝试恢复（例如清解码缓存/换源），成功则同路径整片重试。
     const w = window as ExportFlagWindow;
@@ -375,18 +380,33 @@ export async function renderTimelineInBrowser(options: BrowserExportOptions): Pr
   throwIfAborted(options.signal);
   const blocker = staticBrowserBlocker(options);
   if (blocker) return blocker;
-  const config = await loadBrowserRenderConfig(options);
-  if ('status' in config) return config;
-  throwIfAborted(options.signal);
-  const dimensions = browserScaledExportDimensions(options.state, options.resolution);
-  options.onStatus?.({ type: 'output', output: { container: config.container, codec: options.codec,
-    width: dimensions.width, height: dimensions.height, fps: options.fps,
-    ...(typeof config.videoBitrate === 'number' ? { bitrate: config.videoBitrate } : {}) } });
   return withBrowserRenderSlot(async () => {
+    const session = startBrowserExportSession({ signal: options.signal, onStatus: options.onStatus,
+      revision: String(Reflect.get(globalThis, '__XMT_LATEST_PROJECT_REVISION__') ?? Reflect.get(options.project ?? {}, 'revision') ?? 'unknown') });
+    const observed = { ...options, signal: session.signal, onStatus: session.event };
     const runtime = (globalThis as { __XMT_EXPORT_ACCELERATION__?: ExportAccelerationRuntime }).__XMT_EXPORT_ACCELERATION__;
-    const stop = options.onStatus ? runtime?.observeProgress?.(options.onStatus) : undefined;
-    try { return await executeBrowserRender(options, config); }
-    finally { stop?.(); }
+    let stop: (() => void) | undefined;
+    try {
+      stop = runtime?.observeProgress?.(session.event);
+      const config = await loadBrowserRenderConfig(observed);
+      if ('status' in config) { session.finish('unsupported', config.reason); return config; }
+      throwIfAborted(session.signal);
+      const dimensions = browserScaledExportDimensions(options.state, options.resolution);
+      session.event({ type: 'output', output: { container: config.container, codec: options.codec,
+        width: dimensions.width, height: dimensions.height, fps: options.fps,
+        ...(typeof config.videoBitrate === 'number' ? { bitrate: config.videoBitrate } : {}) } });
+      const result = await executeBrowserRender(observed, config, session);
+      session.finish('rendered', undefined, result.blob.size);
+      return result;
+    } catch (error) {
+      let failure = error;
+      if (!options.signal?.aborted) {
+        try { session.checkFailure(error); } catch (classified) { failure = classified; }
+      }
+      const interrupted = failure instanceof ExportFailureError && failure.failure.code === 'browser_background_interrupted';
+      session.finish(options.signal?.aborted ? 'cancelled' : interrupted ? 'interrupted' : 'failed', failure);
+      throw failure;
+    } finally { stop?.(); }
   }, options.signal, () => options.onStatus?.({ type: 'stage', stage: 'queued' }));
 }
 

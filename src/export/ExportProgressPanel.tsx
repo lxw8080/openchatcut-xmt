@@ -35,6 +35,8 @@ export function ExportProgressPanel({ progress, clock, renderEngine }: {
   const live = progress.live;
   const terminal = isExportTerminal(progress.phase);
   const end = progress.finishedAt ?? clock;
+  const lifecycle = live?.lifecycle;
+  const hiddenMs = (lifecycle?.hiddenMs ?? 0) + (lifecycle?.hiddenSince === undefined ? 0 : Math.max(0, end - lifecycle.hiddenSince));
   const stage = exportStageKey(progress);
   const label = t(exportStageLabel(progress, renderEngine));
   const materials = live?.materials ?? [];
@@ -58,6 +60,11 @@ export function ExportProgressPanel({ progress, clock, renderEngine }: {
         <span>{live && live.attempt > 1 ? t('第 {n} 次渲染', { n: live.attempt }) : t('导出任务')}</span>
       </div>
       {live?.retryReason && <p className="cc-export-live-note" role="status">{live.retryReason}</p>}
+      {lifecycle && !terminal && <p className="cc-export-live-note" role="status">
+        {lifecycle.visibility === 'hidden' ? '页面已进入后台，系统可能暂停导出；返回后将检查任务状态。'
+          : lifecycle.wakeLock === 'active' ? '已保持屏幕开启；手动锁屏或切到其他应用仍可能中断导出。'
+            : '屏幕保亮不可用或已释放，请保持页面在前台并避免自动锁屏。'}
+      </p>}
       <div className={`cc-export-progress-track${percent === null && !terminal ? ' indeterminate' : ''}`}
         role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100}
         aria-valuenow={percent ?? undefined}>
@@ -65,6 +72,8 @@ export function ExportProgressPanel({ progress, clock, renderEngine }: {
       </div>
       <div className="cc-export-live-numbers">
         <span>{t('总耗时')} <b data-testid="export-total-time">{formatExportDuration(end - progress.startedAt)}</b></span>
+        {lifecycle && <span>前台耗时 <b>{formatExportDuration(Math.max(0, end - progress.startedAt - hiddenMs))}</b></span>}
+        {hiddenMs > 0 && <span>后台停留 <b>{formatExportDuration(hiddenMs)}</b></span>}
         {!terminal && <span>{t('本阶段')} <b>{formatExportDuration(end - (progress.stageStartedAt ?? progress.startedAt))}</b></span>}
         {progress.phase === 'rendering' && <span>{t('渲染进度')} <b>{percent}%</b></span>}
       </div>
@@ -103,6 +112,8 @@ export function ExportProgressPanel({ progress, clock, renderEngine }: {
             {row.proxy && <small>{t('使用兼容副本')}</small>}
             {route && <small>{t(route.mode.endsWith('hardware') ? '硬件优先 · 实解验证通过' : route.mode.endsWith('software') ? '软件优先 · 实解验证通过' : '解码路线未确认')}</small>}
             {route?.hardwareFailure && <small>{t('软件回退原因')}：{route.hardwareFailure}</small>}
+            {route?.optimization && <small>{route.optimization}</small>}
+            {route?.probeMs !== undefined && <small>实帧探测：{Math.round(route.probeMs)} ms{route.frames ? ` / ${route.frames} 帧` : ''}（含取帧等待）</small>}
             {row.reasons.length > 0 && <small>{row.reasons.join('；')}</small>}
           </li>;
         })}</ul>

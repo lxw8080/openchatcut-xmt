@@ -1,4 +1,5 @@
 import type { ExportPhase, ExportProgress } from './exportWorkflowTypes';
+import type { BrowserLifecycle } from './browserExportSession';
 
 export type PreparationStage = 'capability-check' | 'checking' | 'encoder-check' | 'transcoding' | 'probing' | 'recovering';
 export type MaterialStage = 'checking' | 'queued' | 'transcoding' | 'verifying' | 'ready' | 'failed';
@@ -14,6 +15,9 @@ export interface DecoderRoute {
   originalSource?: string;
   mode: string;
   hardwareFailure?: string | null;
+  probeMs?: number;
+  frames?: number;
+  optimization?: string;
 }
 export interface LiveExportProgress {
   output?: { container: string; codec: string; width: number; height: number; fps: number; bitrate?: number };
@@ -28,12 +32,14 @@ export interface LiveExportProgress {
   notice?: string;
   retryReason?: string;
   labels?: Record<string, string>;
+  lifecycle?: BrowserLifecycle;
 }
 interface ReadinessRow {
   asset_id?: number; source?: string; state: string; stage?: MaterialStage;
   reasons?: string[]; proxy_status?: string; proxy?: boolean;
 }
 export type BrowserExportEvent =
+  | { type: 'lifecycle'; lifecycle: BrowserLifecycle }
   | { type: 'output'; output: NonNullable<LiveExportProgress['output']> }
   | { type: 'stage'; stage: PreparationStage | 'queued' | 'rendering' | 'finalizing'; source?: string; attempt?: number }
   | { type: 'readiness'; data: { assets?: ReadinessRow[]; uploads?: ReadinessRow[] } }
@@ -102,6 +108,7 @@ export function applyBrowserExportEvent(progress: ExportProgress, event: Browser
     live.encoder = { preference: event.preference, reason: event.reason };
   } else if (event.type === 'output') live.output = { ...event.output };
   else if (event.type === 'labels') live.labels = { ...event.labels };
+  else if (event.type === 'lifecycle') live.lifecycle = { ...event.lifecycle };
   else if (event.type === 'retry') live.retryReason = event.reason;
   else if (event.type === 'detail') live.notice = event.detail ? `${event.message} · ${event.detail}` : event.message;
   return { ...progress, phase, percent, processedFrames, live };
@@ -109,6 +116,9 @@ export function applyBrowserExportEvent(progress: ExportProgress, event: Browser
 
 export function renderThroughput(progress: ExportProgress, now: number): { fps: number; remainingMs: number } | null {
   if (progress.phase !== 'rendering' || progress.stageStartedAt === undefined) return null;
+  // Hidden pages may continue briefly or be suspended. Neither wall time nor
+  // hidden time alone measures actual work, so don't invent a post-lock ETA.
+  if (progress.live?.lifecycle?.hiddenSince !== undefined || (progress.live?.lifecycle?.hiddenMs ?? 0) > 0) return null;
   const frames = progress.processedFrames ?? 0;
   const total = progress.totalFrames ?? 0;
   const elapsed = Math.max(0, now - progress.stageStartedAt);

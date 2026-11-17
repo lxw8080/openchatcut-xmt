@@ -8,6 +8,8 @@ import { ExportTabContent } from './ExportDialogTabs';
 import { EXPORT_TABS, type ExportDialogModel } from './useExportDialogModel';
 import type { ExportTab, RenderEngine } from './useExportWorkflow';
 import type { ExportEngineInfo } from './exportWorkflowTypes';
+import { useEffect, useState } from 'react';
+import { interruptedBrowserExport } from './browserExportSession';
 
 function RenderBadge({ tab, renderEngine, engine, reason }: {
   tab: ExportTab;
@@ -91,6 +93,8 @@ function StructuredExportFailure({ model }: { model: ExportDialogModel }) {
 
 export function ExportDialogMain({ state, model }: { state: TimelineState; model: ExportDialogModel }) {
   const { workflow } = model;
+  const [interrupted, setInterrupted] = useState<ReturnType<typeof interruptedBrowserExport>>(null);
+  useEffect(() => { setInterrupted(interruptedBrowserExport()); }, []);
   const output = workflow.progress?.output ?? workflow.progress?.live?.output;
   const t = useT();
   const settings = <ExportTabContent
@@ -106,6 +110,9 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
       <ExportMainHeader model={model} />
       <div className="cc-export-content" role="tabpanel" id={`cc-export-content-${model.tab}`}
         aria-labelledby={`cc-export-tab-${model.tab}`}>
+        {!workflow.progress && interrupted && <p className="cc-export-live-note" role="status">
+          上次导出被页面关闭或系统回收中断，最后记录已编码 {interrupted.encodedFrames} 帧。当前无法从中途续渲，未自动重跑；开始新导出前请保持屏幕开启。
+        </p>}
         {workflow.progress && <ExportProgressPanel progress={workflow.progress} clock={workflow.clock} renderEngine={workflow.renderEngine} />}
         {workflow.progress ? <details className="cc-export-settings">
           <summary className="cc-export-settings-summary">{t(workflow.busy ? '本次导出规格' : '导出设置')}</summary>

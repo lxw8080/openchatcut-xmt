@@ -61,21 +61,33 @@ async function xmtSelectDecoderOptions(src, input, videoTrack) {
   return runtime.selectDecoder({
     source: src,
     signal: window.__XMT_EXPORT_SIGNAL__,
-    probe: async (candidate) => {
-      const probeSink = new VideoSampleSink(videoTrack, candidate);
-      const start = await input.getFirstTimestamp([videoTrack]);
-      let frames = 0;
-      const startedAt = performance.now();
-      for await (const sample of probeSink.samples(start, start + 1)) {
-        try {
-          frames += 1;
-        } finally {
-          sample.close();
+    probe: async (candidate, probeSignal) => {
+      // Each probe owns its input. A deadline must dispose native decoders and
+      // pending reads before another candidate starts; it must not dispose the
+      // render input shared by makeSinks.
+      const probeInput = new Input2({ formats: ALL_FORMATS2,
+        source: new UrlSource2(src, { requestInit: { signal: probeSignal } }) });
+      const abort = () => probeInput.dispose();
+      probeSignal?.addEventListener('abort', abort, { once: true });
+      try {
+        probeSignal?.throwIfAborted();
+        const track = await probeInput.getPrimaryVideoTrack();
+        if (!track) throw new Error('素材没有视频轨');
+        const probeSink = new VideoSampleSink(track, candidate);
+        const start = await probeInput.getFirstTimestamp([track]);
+        let frames = 0;
+        const startedAt = performance.now();
+        for await (const sample of probeSink.samples(start, start + 1)) {
+          try { frames += 1; probeSignal?.throwIfAborted(); }
+          finally { sample.close(); }
+          if (frames >= 16) break;
         }
-        if (frames >= 16) break;
+        if (!frames) throw new Error("真实解帧探针没有产出画面");
+        return { frames, elapsedMs: performance.now() - startedAt };
+      } finally {
+        probeSignal?.removeEventListener('abort', abort);
+        probeInput.dispose();
       }
-      if (!frames) throw new Error("真实解帧探针没有产出画面");
-      return { frames, elapsedMs: performance.now() - startedAt };
     }
   });
 }
