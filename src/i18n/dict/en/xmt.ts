@@ -2,6 +2,7 @@
 // 该文件由 xmt 集成独占，与上游字段文件互不相扰。
 export default {
   '本次导出规格': 'Current export settings',
+  '下方为任务结束时的最后状态': 'Last observed state when this task ended',
   // Export task progress, shared by desktop and mobile.
   "导出实时状态": "Live export status",
   "导出任务": "Export task",

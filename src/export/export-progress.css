@@ -25,6 +25,7 @@
 .cc-export-live-timings dd { margin:0; }
 .cc-export-live.completed .cc-export-progress-track i { background:var(--cc-success); }
 .cc-export-live.failed .cc-export-progress-track i { background:var(--cc-danger); }
+.cc-export-live.cancelled .cc-export-progress-track i { background:var(--cc-text-muted); }
 .cc-export-main-header,.cc-export-footer,.cc-export-destination { flex-shrink:0; }
 .cc-export-content > * { flex-shrink:0; }
 .cc-export-live .indeterminate i { width:30%; animation:cc-export-wait 1.7s ease-in-out infinite; }

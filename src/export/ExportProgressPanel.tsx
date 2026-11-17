@@ -42,9 +42,10 @@ export function ExportProgressPanel({ progress, clock }: { progress: ExportProgr
   const software = routes.filter((row) => row.mode === 'software' || row.mode === 'proxy-software').length;
   const throughput = renderThroughput(progress, clock);
   const percent = progress.phase === 'completed' ? 100
-    : progress.phase === 'rendering' ? Math.min(100, Math.round((progress.processedFrames ?? 0) * 100 / (progress.totalFrames || 1)))
+    : progress.phase === 'rendering' || terminal && progress.processedFrames !== undefined
+      ? Math.min(100, Math.round((progress.processedFrames ?? 0) * 100 / (progress.totalFrames || 1)))
       : stage === 'probing' && live?.decoderTotal ? Math.round(live.decoderCompleted * 100 / live.decoderTotal)
-        : progress.phase === 'preparing' && materials.length ? Math.round(ready * 100 / materials.length) : null;
+        : (progress.phase === 'preparing' || terminal) && materials.length ? Math.round(ready * 100 / materials.length) : null;
   const durations = { ...progress.stageDurations };
   if (!terminal) durations[stage] = (durations[stage] ?? 0) + Math.max(0, end - (progress.stageStartedAt ?? progress.startedAt));
   return (
@@ -56,7 +57,7 @@ export function ExportProgressPanel({ progress, clock }: { progress: ExportProgr
       <div className={`cc-export-progress-track${percent === null && !terminal ? ' indeterminate' : ''}`}
         role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100}
         aria-valuenow={percent ?? undefined}>
-        <i style={percent === null ? undefined : { transform: `scaleX(${percent / 100})` }} />
+        <i style={percent === null && !terminal ? undefined : { transform: `scaleX(${(percent ?? 0) / 100})` }} />
       </div>
       <div className="cc-export-live-numbers">
         <span>{t('总耗时')} <b data-testid="export-total-time">{formatExportDuration(end - progress.startedAt)}</b></span>
@@ -68,6 +69,7 @@ export function ExportProgressPanel({ progress, clock }: { progress: ExportProgr
         {throughput && <> · {throughput.fps.toFixed(1)} fps · {t('预计剩余 {time}', { time: formatExportDuration(throughput.remainingMs) })}</>}
       </p>}
       {progress.phase === 'queued' && <p className="cc-export-live-note">{t('等待当前网页渲染完成后开始，可取消此任务')}</p>}
+      {terminal && progress.phase !== 'completed' && <p className="cc-export-live-note">{t('下方为任务结束时的最后状态')}</p>}
       {materials.length > 0 && <div className="cc-export-live-materials" role="status">
         <strong>{t('素材就绪 {done}/{total}', { done: ready, total: materials.length })}</strong>
         <span>{Object.entries(MATERIAL_LABELS).filter(([key]) => key !== 'ready')
