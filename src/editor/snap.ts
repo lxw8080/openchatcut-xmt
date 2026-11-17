@@ -198,8 +198,17 @@ export function snapPlayheadFrame(options: {
   points: SnapPoint[];
   thresholdFrames: number;
   hold?: SnapFrameHold | null;
+  /** Seekable endpoints take priority over interior guides and sticky holds. */
+  frameRange?: { min: number; max: number };
 }): { frame: number; snapAt: number | null; hold: SnapFrameHold | null } {
-  const { frame, points, thresholdFrames, hold } = options;
+  const { frame, points, thresholdFrames, hold, frameRange } = options;
+  // The caller clamps pointer coordinates before snapping. Without this escape,
+  // a guide within the release radius of an endpoint can hold the playhead there
+  // forever: moving farther outside the timeline still supplies the same frame.
+  if (frameRange && (frame <= frameRange.min || frame >= frameRange.max)) {
+    const endpoint = Math.max(frameRange.min, Math.min(frameRange.max, frame));
+    return { frame: endpoint, snapAt: endpoint, hold: null };
+  }
   if (hold && hasSnapFrame(points, hold.frame)) {
     if (Math.abs(frame - hold.frame) <= radiusFor(hold.type, thresholdFrames) * STICKY_RELEASE) {
       return { frame: hold.frame, snapAt: hold.frame, hold };

@@ -436,6 +436,7 @@ export function useTimelineController({
       }
       const result = snapPlayheadFrame({
         frame: target,
+        frameRange: { min: 0, max: total - 1 },
         points: seekSnapPointsRef.current,
         thresholdFrames: SNAP_PX / px,
         hold: seekSnapHoldRef.current,
