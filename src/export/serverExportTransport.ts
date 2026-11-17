@@ -22,7 +22,10 @@ export async function fetchExportJson(url: string, init: RequestInit = {}, timeo
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     let value: unknown = null;
-    try { value = await response.json(); } catch { controller.signal.throwIfAborted(); }
+    try { value = await response.json(); } catch (error) {
+      controller.signal.throwIfAborted();
+      if (error instanceof TypeError) throw error; // Interrupted response body is retryable too.
+    }
     return { response, value };
   } finally {
     clearTimeout(timer);

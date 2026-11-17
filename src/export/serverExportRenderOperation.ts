@@ -1,5 +1,5 @@
 import { isAbortError } from './browserExport';
-import { cancelXmtServerExport } from './serverExportCancellation';
+import { cancelXmtServerExport, confirmedServerCancellation } from './serverExportCancellation';
 import { fetchExportJson, readServerSnapshot, retryableServerRead, ServerExportTransportError, waitForServer } from './serverExportTransport';
 import type { ExportDestination } from './exportDestination';
 import {
@@ -195,9 +195,9 @@ export async function finishServerCancellation(
   context: Pick<ServerExportContext, 'setBusy' | 'setProgress' | 't'>, renderId: string,
 ): Promise<never> {
   const snapshot = await cancelXmtServerExport(context, renderId);
-  await retireAndDeleteExportJob(renderId).catch(() => false);
+  const cleaned = await retireAndDeleteExportJob(renderId).catch(() => false);
   if (snapshot.status === 'failed') throw new ServerRenderError(new Error(snapshot.error ?? context.t('导出失败')));
-  throw new DOMException('Export cancelled', 'AbortError');
+  throw confirmedServerCancellation(context.t, cleaned);
 }
 
 export async function pollExport(
@@ -224,8 +224,8 @@ export async function pollExport(
       if (snapshot.status === 'cancelled') {
         terminalObserved = true;
         updateActiveProgress(context, { ...snapshot, phase: 'cancelling' });
-        await retireAndDeleteExportJob(renderId).catch(() => false);
-        throw new DOMException('Export cancelled', 'AbortError');
+        const cleaned = await retireAndDeleteExportJob(renderId).catch(() => false);
+        throw confirmedServerCancellation(context.t, cleaned);
       }
       if (snapshot.status === 'failed') {
         terminalObserved = true;

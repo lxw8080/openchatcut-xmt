@@ -10,6 +10,15 @@ interface CancellationContext {
   t: Translate;
 }
 
+export function confirmedServerCancellation(t: Translate, cleaned: boolean): DOMException {
+  return Object.assign(new DOMException('Export cancelled', 'AbortError'), {
+    failure: createExportFailure({ stage: 'cancel', code: 'export_cancelled', retryable: false,
+      cleanupStatus: cleaned ? 'succeeded' : 'failed',
+      message: t(cleaned ? '已取消导出' : '已取消导出，但服务端任务记录清理未完成'),
+    }),
+  });
+}
+
 /** Persist intent before the request; a refresh must resume cancellation, not delivery. */
 export async function cancelXmtServerExport(context: CancellationContext, renderId: string): Promise<ExportJobSnapshot> {
   const host = xmtHost();

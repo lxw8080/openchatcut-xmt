@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createExportJobStore } from './backgroundExportStore';
 import { ExportFailureError } from './exportFailure';
+import { exportFailureFrom } from './exportFailure';
 import { finishServerCancellation, renderCompleted, retireAndDeleteExportJob, type ServerExportContext } from './serverExportRenderOperation';
 import { resumePersistedServerExport } from './serverExportOperation';
 import { listServerExportJobs, resetServerExportRecoveryMemory } from './serverExportRecovery';
@@ -109,6 +110,19 @@ try {
   assert.equal(requests.filter((r) => r === 'POST /editor/export/job').length, submissions, 'retry resumes cancellation without another render');
   assert.deepEqual(await records(), []);
 
+  ctx = context('cleanup-failed');
+  const cleanupAbort = new AbortController();
+  let requestedCleanup = false;
+  read = async (url, init) => {
+    if (url.endsWith('/cancel')) { requestedCleanup = true; return Response.json(cancelled); }
+    if (init?.method === 'POST') return Response.json({ renderId: 'cleanup-failed' });
+    if (init?.method === 'DELETE') return Response.json({ error: 'cleanup gateway failure' }, { status: 503 });
+    if (!requestedCleanup) setTimeout(() => cleanupAbort.abort(), 0);
+    return Response.json(requestedCleanup ? cancelled : active);
+  };
+  await assert.rejects(renderCompleted(ctx, 'video', 'h264', cleanupAbort.signal),
+    (e) => e instanceof DOMException && e.name === 'AbortError' && exportFailureFrom(e)?.cleanupStatus === 'failed');
+
   ctx = context('finished-before-cancel');
   read = async (_url, init) => init?.method === 'POST' ? Response.json({ renderId: 'finished-before-cancel' }) : Response.json(ok);
   await renderCompleted(ctx, 'video', 'h264');
@@ -122,6 +136,12 @@ try {
     init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
   });
   await assert.rejects(fetchExportJson('/pending', {}, 5), { name: 'TimeoutError' });
+  read = async () => {
+    const response = Response.json(ok);
+    response.json = async () => { throw new TypeError('response body interrupted'); };
+    return response;
+  };
+  await assert.rejects(fetchExportJson('/broken-body'), { name: 'TypeError' });
 
   const store = createExportJobStore();
   let release!: () => void;

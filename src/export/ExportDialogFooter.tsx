@@ -36,7 +36,7 @@ export function ExportFooter({ tab, outputName, videoSummary, disabled, workflow
       )}
       <button type="button" className="cc-export-cta" onClick={() => void run()} disabled={disabled}>
         {!busy && <Icon name={progress?.phase === 'completed' ? 'check' : 'download'} size={17} />}
-        {busy ? t(progress ? exportStageLabel(progress) : '准备素材') : progress?.phase === 'completed' ? t('完成')
+        {busy ? t(progress ? exportStageLabel(progress, renderEngine) : '准备素材') : progress?.phase === 'completed' ? t('完成')
           : progress?.phase === 'failed' ? t('重试') : t(EXPORT_ACTION_LABELS[tab])}
       </button>
     </footer>

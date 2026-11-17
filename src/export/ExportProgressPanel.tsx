@@ -1,5 +1,5 @@
 import { useT } from '../i18n/locale';
-import type { ExportProgress } from './exportWorkflowTypes';
+import type { ExportProgress, RenderEngine } from './exportWorkflowTypes';
 import { EXPORT_STAGE_LABELS, exportStageKey, isExportTerminal, renderThroughput,
   sourceIdentity, type MaterialStage } from './exportLiveProgress';
 import './export-progress.css';
@@ -11,7 +11,8 @@ export function formatExportDuration(milliseconds: number): string {
   return hours ? `${hours}:${clock}` : clock;
 }
 
-export function exportStageLabel(progress: ExportProgress): string {
+export function exportStageLabel(progress: ExportProgress, renderEngine?: RenderEngine): string {
+  if (progress.phase === 'queued' && renderEngine === 'server') return '等待服务端渲染';
   return EXPORT_STAGE_LABELS[exportStageKey(progress)] ?? '准备素材';
 }
 
@@ -27,13 +28,15 @@ function sourceLabel(source: string, labels?: Record<string, string>): string {
   try { return decodeURIComponent(key.split('/').at(-1) || source); } catch { return source; }
 }
 
-export function ExportProgressPanel({ progress, clock }: { progress: ExportProgress; clock: number }) {
+export function ExportProgressPanel({ progress, clock, renderEngine }: {
+  progress: ExportProgress; clock: number; renderEngine?: RenderEngine;
+}) {
   const t = useT();
   const live = progress.live;
   const terminal = isExportTerminal(progress.phase);
   const end = progress.finishedAt ?? clock;
   const stage = exportStageKey(progress);
-  const label = t(exportStageLabel(progress));
+  const label = t(exportStageLabel(progress, renderEngine));
   const materials = live?.materials ?? [];
   const ready = materials.filter((row) => row.stage === 'ready').length;
   const failed = materials.filter((row) => row.stage === 'failed').length;
@@ -68,7 +71,8 @@ export function ExportProgressPanel({ progress, clock }: { progress: ExportProgr
         {t('已编码 {done}/{total} 帧', { done: progress.processedFrames, total: progress.totalFrames ?? 0 })}
         {throughput && <> · {throughput.fps.toFixed(1)} fps · {t('预计剩余 {time}', { time: formatExportDuration(throughput.remainingMs) })}</>}
       </p>}
-      {progress.phase === 'queued' && <p className="cc-export-live-note">{t('等待当前网页渲染完成后开始，可取消此任务')}</p>}
+      {progress.phase === 'queued' && <p className="cc-export-live-note">{t(renderEngine === 'server'
+        ? '等待服务端渲染资源，可取消此任务' : '等待当前网页渲染完成后开始，可取消此任务')}</p>}
       {terminal && progress.phase !== 'completed' && <p className="cc-export-live-note">{t('下方为任务结束时的最后状态')}</p>}
       {materials.length > 0 && <div className="cc-export-live-materials" role="status">
         <strong>{t('素材就绪 {done}/{total}', { done: ready, total: materials.length })}</strong>

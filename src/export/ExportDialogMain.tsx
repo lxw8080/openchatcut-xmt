@@ -53,7 +53,7 @@ function BackgroundExportJobs({ model }: { model: ExportDialogModel }) {
           <div className="cc-export-progress-meta" key={job.id}>
             <button type="button" onClick={() => viewJob(job.id)}
               aria-pressed={selectedJobId === job.id}>
-              {job.label} · {t(exportStageLabel(job.progress))}
+              {job.label} · {t(exportStageLabel(job.progress, job.renderEngine))}
             </button>
             {!terminal && (
               <button type="button" onClick={() => cancelJob(job.id)}>{t('取消')}</button>
@@ -105,7 +105,7 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
       <ExportMainHeader model={model} />
       <div className="cc-export-content" role="tabpanel" id={`cc-export-content-${model.tab}`}
         aria-labelledby={`cc-export-tab-${model.tab}`}>
-        {workflow.progress && <ExportProgressPanel progress={workflow.progress} clock={workflow.clock} />}
+        {workflow.progress && <ExportProgressPanel progress={workflow.progress} clock={workflow.clock} renderEngine={workflow.renderEngine} />}
         {workflow.progress ? <details className="cc-export-settings">
           <summary className="cc-export-settings-summary">{t(workflow.busy ? '本次导出规格' : '导出设置')}</summary>
           {workflow.busy && workflow.progress.live?.output

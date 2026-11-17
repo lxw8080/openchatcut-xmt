@@ -42,8 +42,8 @@ async function executeAsyncSelected(context: ExportRunContext): Promise<ExportOp
   return context.operations.exportXml(context.signal);
 }
 
-function markCancelled(context: ExportRunContext): void {
-  const failure = createExportFailure({
+function markCancelled(context: ExportRunContext, reason: unknown): void {
+  const failure = exportFailureFrom(reason) ?? createExportFailure({
     stage: 'cancel',
     code: 'export_cancelled',
     retryable: false,
@@ -95,7 +95,7 @@ async function runExport(context: ExportRunContext): Promise<void> {
     context.setProgress((current) => current ? { ...current, phase: 'completed', percent: 100, finishedAt } : current);
   } catch (reason) {
     if (isAbortError(reason)) {
-      markCancelled(context);
+      markCancelled(context, reason);
       return;
     }
     const existing = exportFailureFrom(reason);
