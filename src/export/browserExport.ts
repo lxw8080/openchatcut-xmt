@@ -244,13 +244,7 @@ async function executeBrowserRender(
       throwIfAborted(signal);
       // Every browser waits for server readiness and real decoding before render.
       if (!projectPrepared) {
-        try {
-          await runtime?.prepareProject?.({ project: exportInputs, sources, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
-        } catch (error) {
-          throwIfAborted(signal);
-          throw new ExportFailureError(createExportFailure({ stage: 'preflight', code: 'export_media_not_ready',
-            retryable: true, message: error instanceof Error ? error.message : String(error) }));
-        }
+        await runtime?.prepareProject?.({ project: exportInputs, sources, signal, openSource: w.__XMT_EXPORT_OPEN_SOURCE__ });
         projectPrepared = true;
       }
       throwIfAborted(signal);
@@ -291,6 +285,12 @@ async function executeBrowserRender(
       return { status: 'rendered' as const, blob, issues: config.issues };
     } catch (error) {
       runtime?.failAttempt?.(attemptToken, error);
+      // Preserve the original error for the host's decode-dead-end telemetry
+      // before presenting a preparation failure to the export UI.
+      if (!projectPrepared && !signal?.aborted && !isAbortError(error)) {
+        throw new ExportFailureError(createExportFailure({ stage: 'preflight', code: 'export_media_not_ready',
+          retryable: true, message: error instanceof Error ? error.message : String(error) }));
+      }
       throw error;
     } finally {
       delete w.__XMT_EXPORTING__;
