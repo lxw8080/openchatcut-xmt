@@ -153,6 +153,13 @@ export const markServerExportOutputReady = (
   claim?: ServerExportDeliveryClaim,
 ) => transitionServerExportStage(renderId, 'ready', 'output-ready', claim);
 
+/** XMT keeps its recovery receipt locally; only the cancellation owner writes intent. */
+export async function markServerExportCancellationRequested(renderId: string, requested: boolean): Promise<void> {
+  const record = await readLocalRecord(renderId);
+  if (!record) throw new Error('无法读取导出恢复记录');
+  await writeLocalRecord({ ...record, cancelRequested: requested, updatedAt: Date.now() });
+}
+
 export const markServerExportDeliveryAmbiguous = (
   renderId: string,
   claim: ServerExportDeliveryClaim,

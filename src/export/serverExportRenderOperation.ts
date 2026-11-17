@@ -1,3 +1,6 @@
+import { isAbortError } from './browserExport';
+import { cancelXmtServerExport } from './serverExportCancellation';
+import { fetchExportJson, readServerSnapshot, retryableServerRead, ServerExportTransportError, waitForServer } from './serverExportTransport';
 import type { ExportDestination } from './exportDestination';
 import {
   exportFailureFrom,
@@ -28,6 +31,7 @@ import { reportExportDiagnostic } from './exportDiagnostics';
 export interface ServerExportContext {
   autoQaEnabled: boolean;
   createOperationId?: () => string;
+  setServerRenderId?: (renderId: string) => void;
   destination: ExportDestination;
   options: UseExportWorkflowOptions;
   targetPath?: string | null;
@@ -88,21 +92,6 @@ export function isServerRenderError(error: unknown): error is ServerRenderError 
   return error instanceof ServerRenderError;
 }
 
-function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
-  signal?.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException('Export cancelled', 'AbortError'));
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
 function submissionBody(
   context: ServerExportContext,
   format: ExportFormat,
@@ -127,6 +116,7 @@ async function submitExport(
   codec: ExportCodec,
   operationId: string,
   signal?: AbortSignal,
+  onSubmitting?: () => void,
 ) {
   const host = xmtHost();
   if (host && (format !== 'video' || codec !== 'h264')) {
@@ -140,14 +130,20 @@ async function submitExport(
   }
   const body = submissionBody(context, format, codec, operationId);
   if (host) body.xmtJobId = host.jobId;
+  signal?.throwIfAborted();
+  onSubmitting?.();
   void reportExportDiagnostic('submit-started');
-  const submission = await fetch(host ? '/editor/export/job' : '/export/job', {
+  const { response: submission, value: submitted } = await fetchExportJson(host ? '/editor/export/job' : '/export/job', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(host ? { 'X-CSRFToken': host.csrfToken } : {}) },
     body: JSON.stringify(body),
     signal,
   });
-  const submitted: unknown = await submission.json().catch(() => null);
+  if (!submission.ok && submission.status >= 400 && submission.status < 500 && submission.status !== 408) {
+    // Explicit rejection is different from a lost/timeout response after the
+    // request may have been accepted. Only the former can discard its receipt.
+    await retireServerExportJob(operationId).catch(() => false);
+  }
   if (submitted && typeof submitted === 'object' && 'failure' in submitted && isExportFailure(submitted.failure)) {
     throw new ExportFailureError(submitted.failure);
   }
@@ -165,33 +161,8 @@ async function submitExport(
   return renderId;
 }
 
-async function readSnapshot(
-  renderId: string,
-  t: Translate,
-  signal?: AbortSignal,
-): Promise<ExportJobSnapshot> {
-  const base = xmtHost() ? '/editor/export/job' : '/export/job';
-  const response = await fetch(`${base}/${encodeURIComponent(renderId)}`, { signal });
-  const snapshot: unknown = await response.json().catch(() => null);
-  const validSnapshot = snapshot !== null && typeof snapshot === 'object'
-    && 'status' in snapshot
-    && (snapshot.status === 'queued' || snapshot.status === 'running'
-      || snapshot.status === 'succeeded' || snapshot.status === 'failed')
-    && 'progress' in snapshot && typeof snapshot.progress === 'number';
-  if ((!response.ok || !validSnapshot)
-    && snapshot && typeof snapshot === 'object'
-    && 'failure' in snapshot && isExportFailure(snapshot.failure)) {
-    throw new ExportFailureError(snapshot.failure);
-  }
-  if (!response.ok || !validSnapshot) {
-    const message = snapshot && typeof snapshot === 'object' && 'error' in snapshot
-      && typeof snapshot.error === 'string' ? snapshot.error : undefined;
-    throw new Error(message ?? t('无法读取导出进度 ({status})', { status: response.status }));
-  }
-  return snapshot as ExportJobSnapshot;
-}
-
 function activePhase(snapshot: ExportJobSnapshot): ExportPhase {
+  if (snapshot.phase === 'cancelling') return 'cancelling';
   if (snapshot.phase === 'queued') return 'queued';
   if (snapshot.phase === 'finalizing') return 'finalizing';
   return snapshot.phase === 'rendering' ? 'rendering' : 'preparing';
@@ -201,6 +172,7 @@ function updateActiveProgress(context: ServerExportContext, snapshot: ExportJobS
   context.setProgress((current) => current ? {
     ...current,
     phase: activePhase(snapshot),
+    detail: snapshot.phase === 'cancelling' ? context.t('正在停止服务端渲染，等待确认') : undefined,
     percent: Math.min(99, Math.max(current.percent, Math.round(snapshot.progress))),
     processedFrames: snapshot.processedFrames,
     totalFrames: snapshot.totalFrames,
@@ -219,29 +191,64 @@ function completeSnapshot(context: ServerExportContext, snapshot: ExportJobSnaps
   return snapshot.result;
 }
 
+export async function finishServerCancellation(
+  context: Pick<ServerExportContext, 'setBusy' | 'setProgress' | 't'>, renderId: string,
+): Promise<never> {
+  const snapshot = await cancelXmtServerExport(context, renderId);
+  await retireAndDeleteExportJob(renderId).catch(() => false);
+  if (snapshot.status === 'failed') throw new ServerRenderError(new Error(snapshot.error ?? context.t('导出失败')));
+  throw new DOMException('Export cancelled', 'AbortError');
+}
+
 export async function pollExport(
   context: ServerExportContext,
   renderId: string,
   signal?: AbortSignal,
 ): Promise<ExportJobResult> {
-  while (true) {
-    const snapshot = await readSnapshot(renderId, context.t, signal);
-    if (snapshot.status === 'failed') {
-      const cause = snapshot.failure
-        ? new ExportFailureError(snapshot.failure)
-        : new Error(snapshot.error ?? context.t('导出失败'));
-      throw new ServerRenderError(cause);
+  let failures = 0;
+  let terminalObserved = false;
+  try {
+    while (true) {
+      let snapshot: ExportJobSnapshot;
+      try {
+        snapshot = await readServerSnapshot(renderId, context.t, signal);
+      } catch (error) {
+        if (signal?.aborted || !xmtHost() || !retryableServerRead(error)) throw error;
+        const detail = context.t('连接中断，正在恢复原导出任务；不会重复提交');
+        context.setBusy(detail);
+        context.setProgress((current) => current ? { ...current, phase: 'reconnecting', detail } : current);
+        await waitForServer(Math.min(5000, 500 * 2 ** Math.min(failures++, 4)), signal);
+        continue;
+      }
+      failures = 0;
+      if (snapshot.status === 'cancelled') {
+        terminalObserved = true;
+        updateActiveProgress(context, { ...snapshot, phase: 'cancelling' });
+        await retireAndDeleteExportJob(renderId).catch(() => false);
+        throw new DOMException('Export cancelled', 'AbortError');
+      }
+      if (snapshot.status === 'failed') {
+        terminalObserved = true;
+        const cause = snapshot.failure
+          ? new ExportFailureError(snapshot.failure)
+          : new Error(snapshot.error ?? context.t('导出失败'));
+        throw new ServerRenderError(cause);
+      }
+      if (snapshot.status === 'succeeded') return completeSnapshot(context, snapshot);
+      context.setBusy(context.t(snapshot.phase === 'cancelling' ? '正在停止服务端渲染，等待确认' : '正在渲染…'));
+      updateActiveProgress(context, snapshot);
+      await waitForServer(300, signal);
     }
-    if (snapshot.status === 'succeeded') return completeSnapshot(context, snapshot);
-    updateActiveProgress(context, snapshot);
-    await wait(300, signal);
+  } catch (error) {
+    if (xmtHost() && signal?.aborted && !terminalObserved) return finishServerCancellation(context, renderId);
+    throw error;
   }
 }
 
 async function deleteExportJob(renderId: string): Promise<void> {
   const host = xmtHost();
   const base = host ? '/editor/export/job' : '/export/job';
-  const response = await fetch(`${base}/${encodeURIComponent(renderId)}`, {
+  const { response } = await fetchExportJson(`${base}/${encodeURIComponent(renderId)}`, {
     method: 'DELETE',
     headers: host ? { 'X-CSRFToken': host.csrfToken } : undefined,
   });
@@ -251,6 +258,17 @@ async function deleteExportJob(renderId: string): Promise<void> {
 }
 
 export async function retireAndDeleteExportJob(renderId: string): Promise<boolean> {
+  if (xmtHost()) {
+    // Confirm termination before retiring the only recovery receipt. DELETE is
+    // cleanup, not cancellation, and an HTTP failure proves nothing about work.
+    const snapshot = await readServerSnapshot(renderId, (key) => key).catch((error: unknown) => {
+      if (error instanceof ServerExportTransportError && error.status === 404) return null;
+      throw error;
+    });
+    if (snapshot?.status === 'queued' || snapshot?.status === 'running') {
+      throw new Error('服务端仍在渲染，请恢复原任务或等待取消确认');
+    }
+  }
   if (!await retireServerExportJob(renderId)) return false;
   await deleteExportJob(renderId);
   return true;
@@ -265,15 +283,15 @@ export async function renderCompleted(
   const renderId = context.createOperationId?.() ?? globalThis.crypto.randomUUID();
   const startedAt = performance.now();
   let submissionAccepted = false;
-  let outputObserved = false;
+  let submissionStarted = false;
+  context.setServerRenderId?.(renderId);
   try {
     void reportExportDiagnostic('mobile-route');
     await persistServerExportJob(recoveryRecord(context, renderId, format, codec));
-    await submitExport(context, format, codec, renderId, signal);
+    await submitExport(context, format, codec, renderId, signal, () => { submissionStarted = true; });
     submissionAccepted = true;
     void reportExportDiagnostic('submit-accepted', { elapsedMs: performance.now() - startedAt });
     const completed = await pollExport(context, renderId, signal);
-    outputObserved = true;
     await markServerExportOutputReady(renderId);
     void reportExportDiagnostic('render-finished', { elapsedMs: performance.now() - startedAt });
     return { renderId, completed };
@@ -282,7 +300,14 @@ export async function renderCompleted(
     void reportExportDiagnostic(submissionAccepted ? 'poll-failed' : 'submit-failed', {
       elapsedMs: performance.now() - startedAt, code,
     });
-    if (submissionAccepted && !outputObserved) {
+    if (!submissionStarted) {
+      await retireServerExportJob(renderId).catch(() => false);
+    } else if (isServerRenderError(error)) {
+      await retireAndDeleteExportJob(renderId).catch(() => false);
+    } else if (!submissionAccepted && isAbortError(error) && xmtHost()) {
+      // The POST may have been accepted even if its response was interrupted.
+      return finishServerCancellation(context, renderId);
+    } else if (!xmtHost() && submissionAccepted && isAbortError(error)) {
       await retireAndDeleteExportJob(renderId).catch(() => false);
     }
     throw error;

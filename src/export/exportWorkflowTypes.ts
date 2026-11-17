@@ -7,7 +7,7 @@ import type { ExportFailure } from './exportFailure';
 import type { LiveExportProgress } from './exportLiveProgress';
 
 export type ExportTab = 'video' | 'audio' | 'mg' | 'subtitles' | 'xml';
-export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed' | 'cancelled';
+export type ExportPhase = 'queued' | 'preparing' | 'rendering' | 'reconnecting' | 'cancelling' | 'finalizing' | 'verifying' | 'downloading' | 'completed' | 'failed' | 'cancelled';
 export type RenderEngine = 'idle' | 'checking' | 'browser' | 'server';
 export type Translate = (zh: string, params?: Record<string, string | number>) => string;
 export type StateSetter<Value> = Dispatch<SetStateAction<Value>>;
@@ -43,7 +43,7 @@ export interface ExportQaUiState {
 }
 
 export interface ExportJobSnapshot {
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   progress: number;
   phase?: string;
   processedFrames?: number;

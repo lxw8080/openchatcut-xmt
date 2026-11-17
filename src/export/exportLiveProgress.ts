@@ -119,6 +119,7 @@ export const EXPORT_STAGE_LABELS: Record<string, string> = {
   transcoding: '准备兼容素材', probing: '验证素材解码', recovering: '恢复解码并准备重试',
   preparing: '准备素材', rendering: '正在渲染', finalizing: '正在封装', verifying: '正在质量检查',
   downloading: '正在保存', completed: '导出完成', failed: '导出失败', cancelled: '已取消',
+  reconnecting: '正在恢复连接', cancelling: '正在取消',
 };
 
 export function exportOutputSummary(output: NonNullable<LiveExportProgress['output']>): string {

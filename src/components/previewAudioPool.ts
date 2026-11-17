@@ -1,17 +1,18 @@
 import type { TimelineState } from '../editor/types';
+import { isStaticallySilent } from '../editor/staticSilence';
 
 /**
  * Remotion requires this value to stay immutable for the mounted Player.
- * Keep a fixed ceiling so moving overlapping clips cannot exhaust the pool or
- * force the Player to remount.
+ * Desktop and nested compositions keep this ceiling. Mobile can use a smaller
+ * pool but must remount the Player before committing a change in demand.
  */
 export const PREVIEW_SHARED_AUDIO_TAGS = 32;
 
-/** Peak demand remains useful for diagnostics and non-Player consumers. */
+/** Use the same silence predicate as the actual audio/video playback layers. */
 export function previewAudioTagCount(state: TimelineState): number {
   const events: Array<{ frame: number; delta: 1 | -1 }> = [];
   for (const item of state.items) {
-    if ((item.kind !== 'audio' && item.kind !== 'video') || !item.src || item.volume === 0) continue;
+    if ((item.kind !== 'audio' && item.kind !== 'video') || !item.src || isStaticallySilent(item)) continue;
     const track = state.tracks?.[item.track];
     if (track?.hidden || track?.muted) continue;
     events.push({ frame: item.startFrame, delta: 1 });

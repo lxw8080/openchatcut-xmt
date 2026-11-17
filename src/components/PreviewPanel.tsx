@@ -233,7 +233,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     const onChange: CallbackListener<'fullscreenchange'> = (e) => setFullscreen(e.detail.isFullscreen);
     player.addEventListener('fullscreenchange', onChange);
     return () => player.removeEventListener('fullscreenchange', onChange);
-  }, [playerRef, hasItems]);
+  }, [playerRef, hasItems, previewAudioPool.playerKey]);
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return undefined;

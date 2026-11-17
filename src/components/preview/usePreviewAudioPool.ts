@@ -14,14 +14,15 @@ export function usePreviewAudioPool({ state, mobile, playerRef, durationInFrames
   const [audioTags, setAudioTags] = useState(required);
   const [initialFrame, setInitialFrame] = useState(0);
   const resume = useRef(false);
-  useEffect(() => {
-    if (required === audioTags) return;
+  // Reconcile during this component's render: an effect runs too late, after
+  // children have already attempted to register audio in the old, smaller pool.
+  if (required !== audioTags) {
     const player = playerRef.current;
     const frame = player?.getCurrentFrame() ?? 0;
     setInitialFrame(Math.min(Math.max(0, durationInFrames - 1), Math.max(0, frame)));
     resume.current = player?.isPlaying() ?? false;
     setAudioTags(required);
-  }, [required, audioTags, durationInFrames, playerRef]);
+  }
   useEffect(() => {
     if (!resume.current) return;
     resume.current = false;

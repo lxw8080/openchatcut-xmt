@@ -37,6 +37,15 @@ try {
     { id: 'two', kind: 'audio', src: '/two.mp3', startFrame: 30, durationInFrames: 60, track: 'A2' },
   ], tracks: { A1: {}, A2: {} } } as TimelineState;
   assert.equal(previewAudioTagCount(state), 4, 'only actual peak demand plus two shared audio tags');
+  const audibleKeyframes = { ...state, items: Array.from({ length: 5 }, (_, i) => ({
+    ...state.items[0], id: `keyframed-${i}`, volume: 0,
+    keyframes: { volume: [{ frame: 0, value: 1 }, { frame: 59, value: 1 }] },
+  })) } as TimelineState;
+  assert.equal(previewAudioTagCount(audibleKeyframes), 7, 'audible keyframes override zero base volume');
+  assert.equal(previewAudioTagCount({ ...audibleKeyframes, tracks: { A1: { muted: true } } } as TimelineState), 4);
+  assert.equal(previewAudioTagCount({ ...audibleKeyframes, items: audibleKeyframes.items.map((item) => ({
+    ...item, volume: 1, keyframes: { volume: [{ frame: 0, value: 0 }] },
+  })) }), 4, 'provably silent keyframes do not consume the pool');
 } finally {
   if (prior) Object.defineProperty(globalThis, 'window', prior);
   else delete globals.window;

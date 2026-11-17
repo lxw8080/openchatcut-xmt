@@ -28,6 +28,7 @@ export interface BackgroundExportJob {
   progress: ExportProgress;
   qa: ExportQaUiState | null;
   renderEngine: RenderEngine;
+  serverRenderId?: string;
 }
 
 export interface BackgroundExportSnapshot {
@@ -47,6 +48,7 @@ export interface BackgroundExportJobSetters {
   endTargetCommit(): void;
   markTargetCommitted(): void;
   setRenderEngine: StateSetter<RenderEngine>;
+  setServerRenderId?: (renderId: string) => void;
 }
 
 export interface BackgroundExportExecution {
@@ -156,7 +158,6 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
     beginTargetCommit: () => { committingJobs.add(jobId); },
     endTargetCommit: () => {
       committingJobs.delete(jobId);
-      if (cancelRequestedJobs.delete(jobId)) markCancelled(jobId);
     },
     markTargetCommitted: () => {
       committingJobs.delete(jobId);
@@ -172,10 +173,15 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
     setProgress: (value) => update(jobId, (job) => {
       if (TERMINAL_PHASE[job.progress.phase]) return job;
       const next = nextValue<ExportProgress | null>(job.progress, value);
-      return next ? { ...job, progress: next } : job;
+      if (!next) return job;
+      if (cancelRequestedJobs.has(jobId) && !TERMINAL_PHASE[next.phase]) {
+        return { ...job, progress: { ...next, phase: 'cancelling' } };
+      }
+      return { ...job, progress: next };
     }),
     setQa: (value) => update(jobId, (job) => ({ ...job, qa: nextValue(job.qa, value) })),
     setRenderEngine: (value) => update(jobId, (job) => ({ ...job, renderEngine: nextValue(job.renderEngine, value) })),
+    setServerRenderId: (renderId) => update(jobId, (job) => ({ ...job, serverRenderId: renderId })),
   });
   const failUnexpectedly = (jobId: string, reason: unknown) => {
     const existing = snapshot.jobs.find((job) => job.id === jobId);
@@ -224,6 +230,9 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
     publish([...snapshot.jobs, job]);
     void Promise.resolve()
       .then(() => input.execute({ signal: controller.signal, setters: settersFor(id) }))
+      .then(() => {
+        if (controller.signal.aborted && !committedJobs.has(id)) markCancelled(id);
+      })
       .catch((reason: unknown) => failUnexpectedly(id, reason))
       .finally(() => {
         controllers.delete(id);
@@ -262,12 +271,10 @@ export function createExportJobStore(now: () => number = Date.now): ExportJobSto
       const controller = controllers.get(jobId);
       if (committedJobs.has(jobId)) return false;
       if (!controller || controller.signal.aborted) return false;
+      cancelRequestedJobs.add(jobId);
+      update(jobId, (job) => ({ ...job, busy: '正在取消…',
+        progress: { ...job.progress, phase: 'cancelling', detail: '正在等待任务停止确认' } }));
       controller.abort(new DOMException('Export cancelled', 'AbortError'));
-      if (committingJobs.has(jobId)) {
-        cancelRequestedJobs.add(jobId);
-        return true;
-      }
-      markCancelled(jobId);
       return true;
     },
     clearTerminal() {

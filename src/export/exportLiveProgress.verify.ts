@@ -48,11 +48,14 @@ assert.equal(exportOutputSummary(current().progress.live!.output!), 'MP4 · H.26
   'reopened UI uses this job output, independent of form defaults');
 detach();
 assert.equal(store.cancel(jobId), true);
+assert.equal(current().progress.phase, 'cancelling');
+assert.equal(current().progress.finishedAt, undefined);
+end();
+await new Promise((resolve) => setTimeout(resolve, 0));
 const cancelled = current().progress;
 send({ type: 'encoder', preference: 'prefer-hardware', reason: 'late event' });
 assert.equal(current().progress, cancelled, 'terminal task rejects late progress');
 assert.equal(current().progress.finishedAt, now);
-end();
 
 const order: string[] = [];
 let release!: () => void;

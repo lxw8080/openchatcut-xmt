@@ -19,7 +19,7 @@ import { materializeBlobMedia } from './materializeBlobMedia';
 import {
   createServerExporter,
   rebindAndResumePersistedServerExport,
-  retirePersistedServerExport,
+  resumePersistedServerExport,
 } from './serverExportOperation';
 import { createVideoExporter } from './videoExportOperation';
 import { useExportDestination } from './useExportDestination';
@@ -160,12 +160,15 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
       options.onClose();
       return;
     }
-    const retainedRenderId = recoveredServerRenderId(viewedJobId);
+    const retainedRenderId = viewedJob?.serverRenderId ?? recoveredServerRenderId(viewedJobId);
     if (retainedRenderId) {
       try {
-        const retired = await retirePersistedServerExport(retainedRenderId);
-        if (!retired) {
-          setSetupError(t('此导出正在由另一个窗口恢复，请稍后重试'));
+        const resumed = await resumePersistedServerExport({
+          renderId: retainedRenderId, exportJobs, projectId: options.projectId, t,
+        });
+        if (resumed) {
+          setSetupError(null);
+          setViewedJobId(resumed);
           return;
         }
       } catch (error) {
@@ -227,7 +230,7 @@ export function useExportWorkflow(options: UseExportWorkflowOptions, exportJobs:
     setSetupError(null);
     try {
       const selected = await destinationState.chooseDestination();
-      const renderId = recoveredServerRenderId(viewedJobId);
+      const renderId = viewedJob?.serverRenderId ?? recoveredServerRenderId(viewedJobId);
       if (!selected || !renderId || !viewedJob) return;
       const targetPath = exportDestinationTargetPath(selected, viewedJob.label);
       const jobId = await rebindAndResumePersistedServerExport({

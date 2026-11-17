@@ -48,6 +48,7 @@ export interface PersistedServerExportJob {
   destination: ServerExportRecoveryDestination;
   autoQaEnabled: boolean;
   stage: ServerExportRecoveryStage;
+  cancelRequested?: boolean;
   remoteAuthorityEstablished?: true;
   deliveryClaim?: ServerExportDeliveryClaim;
 }

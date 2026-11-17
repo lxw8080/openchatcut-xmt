@@ -20,7 +20,8 @@ export function ExportFooter({ tab, outputName, videoSummary, disabled, workflow
   const summary = progress?.live?.output ? exportOutputSummary(progress.live.output) : videoSummary;
   const cancellablePhase = progress?.phase === 'queued'
     || progress?.phase === 'preparing'
-    || progress?.phase === 'rendering';
+    || progress?.phase === 'rendering'
+    || progress?.phase === 'reconnecting';
   const cancellable = !!busy && cancellablePhase
     && (renderEngine === 'idle' || renderEngine === 'checking' || renderEngine === 'browser' || renderEngine === 'server');
   return (

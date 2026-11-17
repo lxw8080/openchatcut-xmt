@@ -120,7 +120,9 @@ async function verifyPollFailureDoesNotTriggerRenderFallback(): Promise<void> {
       && error.name !== 'ServerRenderError'
       && error.message === 'temporary poll failure',
   );
-  assert.equal(requests.at(-1), 'DELETE /export/job/render-active');
+  assert.equal(requests.some((request) => request === 'DELETE /export/job/render-active'), false);
+  assert.equal((await listServerExportJobs('project-lifecycle'))[0]?.renderId, 'render-active');
+  resetServerExportRecoveryMemory();
 }
 
 async function verifyCancellationDeletesActiveJob(): Promise<void> {

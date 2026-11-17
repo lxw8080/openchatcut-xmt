@@ -32,6 +32,8 @@ import {
 } from './serverExportRecovery';
 import {
   pollExport,
+  isServerRenderError,
+  finishServerCancellation,
   renderCompleted,
   retireAndDeleteExportJob,
   type ExportCodec,
@@ -43,6 +45,7 @@ import type {
   Translate,
   UseExportWorkflowOptions,
 } from './exportWorkflowTypes';
+import { xmtHost } from '../xmt/host';
 export { isServerRenderError, ServerRenderError } from './serverExportRenderOperation';
 
 function updateActualEngine(context: ServerExportContext, completed: ExportJobResult): void {
@@ -250,7 +253,9 @@ async function runRecoveredServerExport(
   setters.setClock(Date.now());
   setters.setBusy(t('正在恢复导出…'));
   setters.setRenderEngine(record.format === 'video' ? 'server' : 'idle');
+  setters.setServerRenderId?.(record.renderId);
   try {
+    if (record.cancelRequested && xmtHost()) await finishServerCancellation({ ...setters, t }, record.renderId);
     if (targetCommitted) {
       setters.markTargetCommitted();
     } else {
@@ -299,6 +304,12 @@ async function runRecoveredServerExport(
       finishedAt,
     } : current);
   } catch (reason) {
+    if (isAbortError(reason) && signal.aborted && xmtHost()
+      && (await listServerExportJobs(record.projectId)).some((row) => row.renderId === record.renderId && row.stage === 'polling')) {
+      try { await finishServerCancellation({ ...setters, t }, record.renderId); }
+      catch (cancelReason) { reason = cancelReason; }
+    }
+    if (isServerRenderError(reason)) await retireAndDeleteExportJob(record.renderId).catch(() => false);
     const cancelled = isAbortError(reason);
     const existing = exportFailureFrom(reason);
     const message = exportDestinationErrorMessage(reason, t);
@@ -377,4 +388,18 @@ export async function rebindAndResumePersistedServerExport({
 
 export async function retirePersistedServerExport(renderId: string): Promise<boolean> {
   return retireAndDeleteExportJob(renderId);
+}
+
+/** A UI retry reattaches to the durable operation; it never submits another render. */
+export async function resumePersistedServerExport({
+  exportJobs, projectId, t, renderId,
+}: ResumePersistedServerExportsOptions & { renderId: string }): Promise<string | null> {
+  const record = (await listServerExportJobs(projectId)).find((entry) => entry.renderId === renderId);
+  if (!record) return null;
+  const id = `retry-${record.renderId}-${globalThis.crypto.randomUUID()}`;
+  exportJobs.recover({
+    id, createdAt: record.createdAt, label: record.label, targetPath: record.targetPath,
+    execute: ({ signal, setters }) => runRecoveredServerExport(record, setters, signal, t),
+  });
+  return id;
 }
