@@ -81,6 +81,7 @@ interface PreviewPanelProps {
   state: TimelineState;
   project: ProjectDoc;
   playerRef: RefObject<PlayerRef | null>;
+  suspendPreview?: boolean;
   onImport: (file: File) => Promise<void>;
   offlineSrcs?: ReadonlySet<string>;
   /** Direct editing of canvas captions (check box + floating toolbar). If it has not been transmitted (such as proposal preview status), it is read-only. */
@@ -114,6 +115,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   projectId, timelineId, reviewState, selectedItem, reviewRequest, inspectorOpen, onToggleInspector,
   selectedPreviewStatuses, onSelectedPreviewStatus, slipPreview,
   hoverPreviewFrame = null,
+  suspendPreview = false,
 }: PreviewPanelProps) {
   const t = useT();
   const mobile = useMobileEditorLayout();
@@ -125,7 +127,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   }), [project, state, timelineId]);
   const preview = usePreviewProjectDoc(renderProject, timelineId);
   const duration = preview.plan.durationInFrames;
-  const previewAudioPool = usePreviewAudioPool({ state, mobile, playerRef, durationInFrames: duration });
+  const previewAudioPool = usePreviewAudioPool({ state, mobile, playerRef, durationInFrames: duration, suspended: suspendPreview });
   const playerInputProps = useMemo(() => ({
     state: preview.state,
     project: preview.project,
@@ -356,7 +358,9 @@ export const PreviewPanel = memo(function PreviewPanel({
             });
             if (source) preview.requestFallback(source.src);
           }}>
-            <Player
+            {suspendPreview ? <div role="status" style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
+              {t('预览已暂停，关闭导出窗口且任务结束后恢复')}
+            </div> : <Player
               key={previewAudioPool.playerKey}
               ref={playerRef}
               component={TimelineComposition}
@@ -379,8 +383,8 @@ export const PreviewPanel = memo(function PreviewPanel({
               spaceKeyToPlayOrPause={false}
               // No loop: playback stops at the final frame (editor convention).
               // Restart by pressing play again.
-            />
-            {!fullscreen && hoverPreviewFrame !== null && (
+            />}
+            {!suspendPreview && !fullscreen && hoverPreviewFrame !== null && (
               <div className="cc-preview-hover-frame" aria-label={t('时间线悬停预览')}>
                 <Thumbnail
                   component={TimelineComposition}
@@ -394,7 +398,7 @@ export const PreviewPanel = memo(function PreviewPanel({
                 />
               </div>
             )}
-            {slipPreview && <SlipTwoUpPreview preview={slipPreview} />}
+            {!suspendPreview && slipPreview && <SlipTwoUpPreview preview={slipPreview} />}
             {offlineNames.length > 0 && (
               <div role="status" style={{
                 position: 'absolute', top: 8, left: 8, right: 8, zIndex: 12,

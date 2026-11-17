@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import { fileURLToPath } from 'node:url';
 
 // xmt：Windows 网页导出的逐素材真实解帧预检，接在 @remotion/media 的 sink 工厂上。
 //
@@ -20,7 +21,7 @@ import type { Plugin } from 'vite';
 //   window.__XMT_EXPORT_ACCELERATION__.selectDecoder({ source, signal, probe })
 //       硬解真实帧 → 软解真实帧 → DecoderProxyRequiredError，返回 mediabunny 的
 //       VideoSinkDecoderOptions（{ hardwareAcceleration }）；同一素材只探一次。
-//   globalThis.__XMT_EXPORT_OPEN_SOURCE__(src, signal)
+//   globalThis.__XMT_EXPORT_OPEN_SOURCE__(src, signal, failedTimeInSeconds?)
 //       prepareProject / recoverDecoder 用它逐素材「真的打开一次」：走与正式
 //       渲染完全相同的 sink 工厂，探针作为副作用在里面跑完，随后 dispose。
 // 三条纪律：所有平台只在导出中生效（预览传 {}，与上游逐字节相同）；
@@ -78,13 +79,18 @@ async function xmtSelectDecoderOptions(src, input, videoTrack) {
     }
   });
 }
-async function xmtOpenExportSource(src, signal) {
+async function xmtOpenExportSource(src, signal, timeInSeconds) {
   const sinks = makeSinks(src, void 0, void 0, { signal });
   try {
     const resolved = await sinks.promise;
     if (typeof resolved === "string") throw new Error(\`素材打开失败：\${resolved}（\${src}）\`);
     const video = await resolved.getVideo();
     if (typeof video === "string") throw new Error(\`素材视频轨打开失败：\${video}（\${src}）\`);
+    // A runtime repair must validate the failed seek, not only the first 16
+    // frames. Reuse the selected sink and close the sample even on cancellation.
+    if (Number.isFinite(timeInSeconds) && timeInSeconds >= 0) {
+      await verifyExportVideoSeek(video.sampleSink, timeInSeconds, signal);
+    }
     const audio = await resolved.getAudio(null);
     if (typeof audio === "string") {
       if (audio !== "no-audio-track") {
@@ -147,6 +153,8 @@ export function xmtDecoderProbe(): Plugin {
       let patched = replaceExactlyOnce(code, VIDEO_SINK_ANCHOR, VIDEO_SINK_PATCHED, 'VideoSampleSink 构造');
       patched = replaceExactlyOnce(patched, AUDIO_SINK_ANCHOR, AUDIO_SINK_PATCHED, 'AudioSampleSink 返回');
       patched = replaceExactlyOnce(patched, GET_SINK_ANCHOR, GET_SINK_HEAD + OPEN_SOURCE_BLOCK + '// src/get-sink.ts\n', 'makeSinks 收尾');
+      const helper = fileURLToPath(new URL('../src/export/browserDecoderProbe.ts', import.meta.url));
+      patched = `import { verifyExportVideoSeek } from ${JSON.stringify(helper)};\n${patched}`;
       applied = true;
       return { code: patched, map: null };
     },

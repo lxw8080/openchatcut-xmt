@@ -125,6 +125,7 @@ export interface EditorWorkspaceExportActions {
 interface EditorWorkspaceExportActionsInput {
   commands: EditorCommands;
   docRef: RefObject<ProjectDoc>;
+  playerRef: RefObject<PlayerRef | null>;
   fps: number;
   projectId: string;
   t: typeof translate;
@@ -177,7 +178,10 @@ export function useEditorWorkspaceExportActions(
 ): EditorWorkspaceExportActions {
   const [exportJobs, activeExportJobs] = useExportJobs(input.projectId, input.t);
   const [exportOpen, setExportOpen] = useState(false);
-  const onExport = useCallback(() => setExportOpen(true), []);
+  const onExport = useCallback(() => {
+    input.playerRef.current?.pause();
+    setExportOpen(true);
+  }, [input.playerRef]);
   useEditorActions({
     commands: input.commands,
     docRef: input.docRef,

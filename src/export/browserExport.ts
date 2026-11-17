@@ -9,6 +9,7 @@ import { createExportFailure, ExportFailureError } from './exportFailure';
 import { withBrowserRenderSlot } from './browserRenderQueue';
 import type { BrowserExportEvent } from './exportLiveProgress';
 import { withExportProbeDeadline } from './browserExportProbe';
+import { browserDecoderBankBudget } from './browserDecoderBudget';
 const DEFAULT_CAPABILITY_BITRATE_BPS = 12_000_000;
 
 /** xmt 导出加速运行时的最小接口（宿主 editor-export-acceleration.js 提供）。 */
@@ -30,7 +31,8 @@ interface ExportFlagWindow {
   __XMT_EXPORTING__?: boolean;
   __XMT_EXPORT_DECODER_SEQ__?: number;
   __XMT_EXPORT_SIGNAL__?: AbortSignal;
-  __XMT_EXPORT_OPEN_SOURCE__?: (src: string, signal?: AbortSignal) => Promise<void>;
+  __XMT_EXPORT_DECODER_BANK_LIMIT__?: number;
+  __XMT_EXPORT_OPEN_SOURCE__?: (src: string, signal?: AbortSignal, timeInSeconds?: number) => Promise<void>;
 }
 
 
@@ -265,6 +267,7 @@ async function executeBrowserRender(
     w.__XMT_EXPORTING__ = true;
     w.__XMT_EXPORT_DECODER_SEQ__ = 0;
     w.__XMT_EXPORT_SIGNAL__ = signal;
+    w.__XMT_EXPORT_DECODER_BANK_LIMIT__ = browserDecoderBankBudget(state, project);
     try {
       const { TimelineComposition } = await (options.loadComposition ?? (() => import('../editor/TimelineComposition')))();
       throwIfAborted(signal);
@@ -324,6 +327,7 @@ async function executeBrowserRender(
     } finally {
       delete w.__XMT_EXPORTING__;
       delete w.__XMT_EXPORT_SIGNAL__;
+      delete w.__XMT_EXPORT_DECODER_BANK_LIMIT__;
     }
   };
   const startedAt = performance.now();
@@ -358,6 +362,7 @@ async function executeBrowserRender(
     // 只有明确的 VideoEncoder/编码器错误才值得整片软件重跑；解码、网络、
     // InputDisposedError、delayRender 失败用软件重跑只是把同一个失败慢放一遍。
     console.warn('[export] 硬件编码器运行期失败，降软件编码整片重试一次：', error);
+    options.onStatus?.({ type: 'retry', reason: '输出编码器在运行中失败，已切换软件优先编码，从头重试一次' });
     options.onStatus?.({ type: 'encoder', preference: 'prefer-software',
       reason: `硬件优先编码在运行中失败，重试改用软件优先：${error instanceof Error ? error.message : String(error)}` });
     const attempt = await attemptRender('prefer-software');

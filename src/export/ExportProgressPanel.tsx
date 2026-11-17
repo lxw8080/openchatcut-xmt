@@ -57,6 +57,7 @@ export function ExportProgressPanel({ progress, clock, renderEngine }: {
         <strong>{label}</strong>
         <span>{live && live.attempt > 1 ? t('第 {n} 次渲染', { n: live.attempt }) : t('导出任务')}</span>
       </div>
+      {live?.retryReason && <p className="cc-export-live-note" role="status">{live.retryReason}</p>}
       <div className={`cc-export-progress-track${percent === null && !terminal ? ' indeterminate' : ''}`}
         role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100}
         aria-valuenow={percent ?? undefined}>

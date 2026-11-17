@@ -31,6 +31,7 @@ send({ type: 'decoders', total: 2, completed: 2, routes: [
   { source: '/media/uploads/clip.mp4', mode: 'software', hardwareFailure: 'hardware unavailable' },
 ] });
 send({ type: 'encoder', preference: 'prefer-software', reason: 'runtime fallback' });
+send({ type: 'retry', reason: '素材 7 在源视频 15.364 秒解码失败，使用软件优先解码从头重试一次' });
 now = 124_000;
 send({ type: 'stage', stage: 'rendering', attempt: 2 });
 assert.equal(current().progress.processedFrames, 0);
@@ -38,6 +39,8 @@ assert.equal(current().progress.stageStartedAt, now);
 assert.equal(current().progress.startedAt, 1000);
 assert.equal(renderThroughput(current().progress, now), null);
 assert.equal(current().progress.live?.decoders.length, 2);
+assert.match(current().progress.live?.retryReason ?? '', /15\.364.*从头重试一次/,
+  'retry explanation must survive the next rendering stage');
 now = 125_000;
 await new Promise((resolve) => setTimeout(resolve, 1100));
 assert.equal(current().clock, now, 'running clock ticks without progress events');

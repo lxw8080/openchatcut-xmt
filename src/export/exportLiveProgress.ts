@@ -26,6 +26,7 @@ export interface LiveExportProgress {
   attempt: number;
   currentSource?: string;
   notice?: string;
+  retryReason?: string;
   labels?: Record<string, string>;
 }
 interface ReadinessRow {
@@ -39,6 +40,7 @@ export type BrowserExportEvent =
   | { type: 'decoders'; total: number; completed: number; routes: DecoderRoute[] }
   | { type: 'encoder'; preference: 'prefer-hardware' | 'prefer-software'; reason: string }
   | { type: 'labels'; labels: Record<string, string> }
+  | { type: 'retry'; reason: string }
   | { type: 'detail'; message: string; detail?: string };
 
 const TERMINAL = new Set<ExportPhase>(['completed', 'failed', 'cancelled']);
@@ -100,6 +102,7 @@ export function applyBrowserExportEvent(progress: ExportProgress, event: Browser
     live.encoder = { preference: event.preference, reason: event.reason };
   } else if (event.type === 'output') live.output = { ...event.output };
   else if (event.type === 'labels') live.labels = { ...event.labels };
+  else if (event.type === 'retry') live.retryReason = event.reason;
   else if (event.type === 'detail') live.notice = event.detail ? `${event.message} · ${event.detail}` : event.message;
   return { ...progress, phase, percent, processedFrames, live };
 }
