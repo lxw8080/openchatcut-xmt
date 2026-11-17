@@ -30,7 +30,7 @@ function context(id: string): ServerExportContext {
     setBusy() {}, setEngineInfo() {}, setEngineReason() {}, setRenderEngine() {}, t: (key) => key,
     setProgress(update) { progress = (typeof update === 'function' ? update(progress) : update)!; events.push(progress); },
     verifyCompletedExport: async () => {},
-    options: { state: { fps: 30, items: [], tracks: {} } as never, projectId: 'mobile-test', projectName: 'Mobile',
+    options: { state: { width: 320, height: 240, fps: 30, items: [], tracks: {} } as never, projectId: 'mobile-test', projectName: 'Mobile',
       base: 'test', tab: 'video', codec: 'h264', resolution: '1080p', fps: 30, subtitleFormat: 'srt',
       subtitleCaptions: null, nleFormat: 'fcp_xml', includeMg: false, mgItems: [], onClose() {} },
   };
@@ -58,6 +58,7 @@ try {
   assert.equal(requests.some((r) => r.startsWith('DELETE ')), false);
   assert.equal((await records())[0]?.stage, 'output-ready');
   assert.equal(events.find((p) => p.phase === 'reconnecting')?.processedFrames, 30);
+  assert.deepEqual(progress.output, { container: 'mp4', codec: 'h264', width: 320, height: 240, fps: 30 });
 
   ctx = context('auth-lost');
   read = async (_url, init) => init?.method === 'POST' ? Response.json({ renderId: 'auth-lost' })
@@ -107,6 +108,8 @@ try {
   await resumePersistedServerExport({ renderId: 'cancel-unknown', projectId: 'mobile-test', exportJobs: recovered, t: (key) => key });
   for (let n = 0; n < 30 && recovered.getActiveCount(); n++) await tick();
   assert.equal(recovered.getSnapshot().jobs[0]?.progress.phase, 'cancelled');
+  assert.equal(recovered.getSnapshot().jobs[0]?.engineInfo?.transport, 'server');
+  assert.equal(recovered.getSnapshot().jobs[0]?.progress.output?.width, 320);
   assert.equal(requests.filter((r) => r === 'POST /editor/export/job').length, submissions, 'retry resumes cancellation without another render');
   assert.deepEqual(await records(), []);
 

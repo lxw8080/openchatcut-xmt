@@ -27,6 +27,7 @@ import type {
 } from './exportWorkflowTypes';
 import { xmtHost } from '../xmt/host';
 import { reportExportDiagnostic } from './exportDiagnostics';
+import type { TimelineState } from '../editor/types';
 
 export interface ServerExportContext {
   autoQaEnabled: boolean;
@@ -49,6 +50,19 @@ export interface ServerExportContext {
 
 export type ExportFormat = 'video' | 'audio';
 export type ExportCodec = 'h264' | 'vp8' | 'prores' | 'mp3';
+
+/** XMT renders the frozen ProjectDoc at its original dimensions and frame rate. */
+export function setXmtServerExportMetadata(
+  context: Pick<ServerExportContext, 'setEngineInfo' | 'setProgress'>, state: TimelineState,
+): void {
+  if (!xmtHost()) return;
+  context.setEngineInfo({ id: 'xmt-project-doc', label: '服务端渲染', hardware: false, transport: 'server' });
+  if (state.width > 0 && state.height > 0 && state.fps > 0) {
+    context.setProgress((current) => current ? { ...current, output: {
+      container: 'mp4', codec: 'h264', width: state.width, height: state.height, fps: state.fps,
+    } } : current);
+  }
+}
 
 function recoveryRecord(
   context: ServerExportContext,
@@ -176,17 +190,21 @@ function updateActiveProgress(context: ServerExportContext, snapshot: ExportJobS
     percent: Math.min(99, Math.max(current.percent, Math.round(snapshot.progress))),
     processedFrames: snapshot.processedFrames,
     totalFrames: snapshot.totalFrames,
+    output: snapshot.output ?? current.output,
   } : current);
 }
 
 function completeSnapshot(context: ServerExportContext, snapshot: ExportJobSnapshot): ExportJobResult {
   if (!snapshot.result?.path) throw new Error(context.t('导出完成，但没有可下载的文件'));
+  const result = snapshot.result;
   context.setProgress((current) => current ? {
     ...current,
     phase: 'finalizing',
     percent: 99,
     processedFrames: snapshot.processedFrames,
     totalFrames: snapshot.totalFrames,
+    output: snapshot.output ?? (result.width && result.height && result.fps && current.output
+      ? { ...current.output, width: result.width, height: result.height, fps: result.fps } : current.output),
   } : current);
   return snapshot.result;
 }
@@ -285,6 +303,7 @@ export async function renderCompleted(
   let submissionAccepted = false;
   let submissionStarted = false;
   context.setServerRenderId?.(renderId);
+  setXmtServerExportMetadata(context, context.options.state);
   try {
     void reportExportDiagnostic('mobile-route');
     await persistServerExportJob(recoveryRecord(context, renderId, format, codec));

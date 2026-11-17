@@ -191,6 +191,7 @@ export default {
   '渲染已完成，成片已保留，可恢复下载': 'Rendering has finished. The output is retained and its download can be resumed.',
   '取消尚未确认，服务端可能仍在渲染；重试将恢复原任务的取消确认': 'Cancellation is not confirmed and the server may still be rendering. Retry to check cancellation of the original task.',
   '手机服务端渲染': 'Server rendering for mobile',
+  '服务端渲染': 'Server rendering',
   '无需等待手机浏览器编码能力检测。关闭弹窗或刷新页面后，可重新打开导出查看任务。': 'No need to wait for mobile encoder checks. Reopen Export after closing this dialog or refreshing the page to view the task.',
   '实际输出：MP4 / H.264 · {width}×{height} · {fps} fps（工程原始画幅与帧率）': 'Output: MP4 / H.264 · {width}×{height} · {fps} fps (original project dimensions and frame rate)',
   '服务端默认画质': 'Default server quality',

@@ -34,6 +34,7 @@ import {
   pollExport,
   isServerRenderError,
   finishServerCancellation,
+  setXmtServerExportMetadata,
   renderCompleted,
   retireAndDeleteExportJob,
   type ExportCodec,
@@ -254,6 +255,7 @@ async function runRecoveredServerExport(
   setters.setBusy(t('正在恢复导出…'));
   setters.setRenderEngine(record.format === 'video' ? 'server' : 'idle');
   setters.setServerRenderId?.(record.renderId);
+  setXmtServerExportMetadata(setters, record.state);
   try {
     if (record.cancelRequested && xmtHost()) await finishServerCancellation({ ...setters, t }, record.renderId);
     if (targetCommitted) {

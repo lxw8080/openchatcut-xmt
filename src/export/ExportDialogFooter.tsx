@@ -17,7 +17,8 @@ export function ExportFooter({ tab, outputName, videoSummary, disabled, workflow
   const t = useT();
   const { busy, cancelExport, progress, renderEngine, run } = workflow;
   const taskName = workflow.jobs.find((job) => job.id === workflow.selectedJobId)?.label ?? outputName;
-  const summary = progress?.live?.output ? exportOutputSummary(progress.live.output) : videoSummary;
+  const output = progress?.output ?? progress?.live?.output;
+  const summary = output ? exportOutputSummary(output) : videoSummary;
   const cancellablePhase = progress?.phase === 'queued'
     || progress?.phase === 'preparing'
     || progress?.phase === 'rendering'

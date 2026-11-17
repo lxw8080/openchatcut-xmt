@@ -91,6 +91,7 @@ function StructuredExportFailure({ model }: { model: ExportDialogModel }) {
 
 export function ExportDialogMain({ state, model }: { state: TimelineState; model: ExportDialogModel }) {
   const { workflow } = model;
+  const output = workflow.progress?.output ?? workflow.progress?.live?.output;
   const t = useT();
   const settings = <ExportTabContent
           tab={model.tab} state={state} video={model.video} subtitles={model.subtitles}
@@ -108,8 +109,7 @@ export function ExportDialogMain({ state, model }: { state: TimelineState; model
         {workflow.progress && <ExportProgressPanel progress={workflow.progress} clock={workflow.clock} renderEngine={workflow.renderEngine} />}
         {workflow.progress ? <details className="cc-export-settings">
           <summary className="cc-export-settings-summary">{t(workflow.busy ? '本次导出规格' : '导出设置')}</summary>
-          {workflow.busy && workflow.progress.live?.output
-            ? <p>{exportOutputSummary(workflow.progress.live.output)}</p> : settings}
+          {workflow.busy && output ? <p>{exportOutputSummary(output)}</p> : settings}
         </details> : settings}
         <StructuredExportFailure model={model} />
         <BackgroundExportJobs model={model} />

@@ -29,6 +29,8 @@ export interface ExportProgress {
   totalFrames?: number;
   detail?: string;
   outputSize?: number;
+  /** Frozen server output specification; browser output remains in live.output. */
+  output?: NonNullable<LiveExportProgress['output']>;
   stageStartedAt?: number;
   stageDurations?: Record<string, number>;
   live?: LiveExportProgress;
@@ -48,6 +50,7 @@ export interface ExportJobSnapshot {
   phase?: string;
   processedFrames?: number;
   totalFrames?: number;
+  output?: ExportProgress['output'];
   result?: ExportJobResult;
   error?: string;
   failure?: ExportFailure;

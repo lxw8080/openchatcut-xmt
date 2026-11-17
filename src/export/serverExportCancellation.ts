@@ -37,6 +37,7 @@ export async function cancelXmtServerExport(context: CancellationContext, render
       context.setProgress((current) => current ? { ...current,
         percent: Math.max(current.percent, snapshot.progress),
         processedFrames: snapshot.processedFrames, totalFrames: snapshot.totalFrames,
+        output: snapshot.output ?? current.output,
       } : current);
       if (snapshot.status !== 'queued' && snapshot.status !== 'running') break;
       if (Date.now() >= deadline) throw new Error('Cancellation confirmation timed out');
